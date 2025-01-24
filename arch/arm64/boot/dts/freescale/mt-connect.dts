@@ -300,8 +300,6 @@
 };
 
 &gpio4 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpio4>;
 	gpio-line-names = "", "", "BRIDGE_RXD0", "BRIDGE_RXD1", "S_BRIDGE_RXD2", "S_BRIDGE_RXD3", "", "",
 		"", "", "BRIDGE_LRCLK", "BRIDGE_BCLK", "BRIDGE_TXD0", "BRIDGE_TXD1", "S_BRIDGE_TXD2", "S_BRIDGE_TXD3",
 		"", "", "", "", "", "", "", "",
@@ -309,8 +307,6 @@
 };
 
 &gpio5 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpio5>;
 	gpio-line-names = "DPM_HP_DAC_BCLK", "DPM_HP_DAC_SD", "DPM_HP_DAC_MCLK", "", "", "PWM_MEMBRANE", "", "",
 		"", "", "SPI2_SCK", "SPI2_MOSI", "SPI2_MISO", "SPI2_NSS", "", "",
 		"DPM_I2C2_SCL", "DPM_I2C2_SDA", "", "", "DPM_I2C4_SCL", "DPM_I2C4_SDA", "", "",
@@ -324,6 +320,19 @@
 	pinctrl-1 = <&pinctrl_i2c4_gpio>;
 	scl-gpios = <&gpio5 20 GPIO_ACTIVE_HIGH>;
 	sda-gpios = <&gpio5 21 GPIO_ACTIVE_HIGH>;
+	status = "okay";
+};
+
+&sai3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai3>;
+	clock-names = "bus", "mclk1", "mclk2", "mclk3";
+	/* the DAI should select the sysclk */
+	clocks = <&clk IMX8MM_CLK_SAI3_IPG>, /* using internal bus clock */
+		<&clk IMX8MM_CLK_DUMMY>,
+		<&clk IMX8MM_CLK_DUMMY>,
+		<&clk IMX8MM_CLK_DUMMY>;
+	/* using default config: tx is async, rx synchronized to tx clock */
 	status = "okay";
 };
 
@@ -539,19 +548,15 @@
 		>;
 	};
 
-	pinctrl_gpio4: gpio4grp {
-		fsl,pins = <
-		MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28		0x06 /* HP_DAC_PDN */
-		MX8MM_IOMUXC_SAI3_RXD_GPIO4_IO30		0x06 /* HP_DAC_I2C_FIL */
-		MX8MM_IOMUXC_SAI3_TXFS_GPIO4_IO31		0x26 /* DPM_HP_DAC_LRCK */
-		>;
-	};
-
-	pinctrl_gpio5: gpio5grp {
+	pinctrl_sai3: sai3grp {
 		fsl,pins = <
 		MX8MM_IOMUXC_SAI3_TXC_GPIO5_IO0			0x26 /* DANTE_OSC_BICK */
 		MX8MM_IOMUXC_SAI3_MCLK_GPIO5_IO2		0x26 /* DANTE_OSC_MCLK */
 		MX8MM_IOMUXC_SAI3_TXD_GPIO5_IO1			0x06 /* DPM_HP_DAC_SD */
+		MX8MM_IOMUXC_SAI3_TXD_SAI3_TX_DATA0		0xd6
+		MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28		0x06 /* HP_DAC_PDN */
+		MX8MM_IOMUXC_SAI3_RXD_GPIO4_IO30		0x06 /* HP_DAC_I2C_FIL */
+		MX8MM_IOMUXC_SAI3_TXFS_GPIO4_IO31		0x26 /* DPM_HP_DAC_LRCK */
 		>;
 	};
 
