@@ -300,6 +300,8 @@
 };
 
 &gpio4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_gpio4>;
 	gpio-line-names = "", "", "BRIDGE_RXD0", "BRIDGE_RXD1", "S_BRIDGE_RXD2", "S_BRIDGE_RXD3", "", "",
 		"", "", "BRIDGE_LRCLK", "BRIDGE_BCLK", "BRIDGE_TXD0", "BRIDGE_TXD1", "S_BRIDGE_TXD2", "S_BRIDGE_TXD3",
 		"", "", "", "", "", "", "", "",
@@ -307,6 +309,8 @@
 };
 
 &gpio5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_gpio5>;
 	gpio-line-names = "DPM_HP_DAC_BCLK", "DPM_HP_DAC_SD", "DPM_HP_DAC_MCLK", "", "", "PWM_MEMBRANE", "", "",
 		"", "", "SPI2_SCK", "SPI2_MOSI", "SPI2_MISO", "SPI2_NSS", "", "",
 		"DPM_I2C2_SCL", "DPM_I2C2_SDA", "", "", "DPM_I2C4_SCL", "DPM_I2C4_SDA", "", "",
@@ -366,6 +370,8 @@
 };
 
 &usbotg1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg1>;
 	hnp-disable;
 	srp-disable;
 	adp-disable;
@@ -379,6 +385,8 @@
 };
 
 &usbotg2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usbotg2>;
 	hnp-disable;
 	srp-disable;
 	adp-disable;
@@ -660,6 +668,18 @@
 	pinctrl_gpio_led: gpio-led-grp {
 		fsl,pins = <
 			MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x186
+		>;
+	};
+
+	pinctrl_usbotg1: gpio-usbotg1-grp {
+		fsl,pins = <
+			MX8MM_IOMUXC_GPIO1_IO10_GPIO1_IO10		0x06
+		>;
+	};
+
+	pinctrl_usbotg2: gpio-usbotg2-grp {
+		fsl,pins = <
+			MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x06
 		>;
 	};
 
