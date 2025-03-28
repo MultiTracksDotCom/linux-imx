@@ -25,6 +25,25 @@
 		reg = <0x0 0x40000000 0 0x80000000>;
 	};
 
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+        /* Coretx-M4 will use TCM section (Tightly Coupled Memory) being much faster than DRAM */
+		/* 128 kB for Text */
+		cortex_m4_text: m4@7E0000 {
+			reg = <0 0x7E0000 0 0x20000>;
+			no-map;
+		};
+		
+		/* 128 kB for Data */
+		cortex_m4_data: m4@800000 {
+			reg = <0 0x800000 0 0x20000>;
+			no-map;
+		};
+	};
+
 	reg_ldo_vcc: regulator-ldo-vcc {
 		compatible = "regulator-fixed";
 		regulator-name = "ldo_vcc_3v3";
