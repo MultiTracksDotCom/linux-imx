@@ -1436,6 +1436,11 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	if (of_find_property(np, "fsl,txm-rxs", NULL) != NULL) {
 		sai->masterflag[FSL_FMT_TRANSMITTER] = SND_SOC_DAIFMT_BP_FP;
 		sai->masterflag[FSL_FMT_RECEIVER] = SND_SOC_DAIFMT_BC_FC;
+	} else if (of_find_property(np, "fsl,txs-rxs", NULL) != NULL) {
+		sai->masterflag[FSL_FMT_TRANSMITTER] = SND_SOC_DAIFMT_BC_FC;
+		sai->masterflag[FSL_FMT_RECEIVER] = SND_SOC_DAIFMT_BC_FC;
+	} else {
+		/*Do nothing*/
 	}
 
 	irq = platform_get_irq(pdev, 0);
