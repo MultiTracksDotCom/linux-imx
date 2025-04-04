@@ -357,8 +357,6 @@
 };
 
 &usbotg1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg1>;
 	hnp-disable;
 	srp-disable;
 	adp-disable;
@@ -372,8 +370,6 @@
 };
 
 &usbotg2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usbotg2>;
 	hnp-disable;
 	srp-disable;
 	adp-disable;
@@ -659,18 +655,6 @@
 	pinctrl_gpio_led: gpio-led-grp {
 		fsl,pins = <
 			MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x186
-		>;
-	};
-
-	pinctrl_usbotg1: gpio-usbotg1-grp {
-		fsl,pins = <
-			MX8MM_IOMUXC_GPIO1_IO10_GPIO1_IO10		0x06
-		>;
-	};
-
-	pinctrl_usbotg2: gpio-usbotg2-grp {
-		fsl,pins = <
-			MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11		0x06
 		>;
 	};
 
