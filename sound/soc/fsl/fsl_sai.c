@@ -168,10 +168,11 @@ out:
 static int fsl_sai_set_dai_tdm_slot(struct snd_soc_dai *cpu_dai, u32 tx_mask,
 				u32 rx_mask, int slots, int slot_width)
 {
+	(void)(slot_width); /*Override the ALSA slot width setting*/
 	struct fsl_sai *sai = snd_soc_dai_get_drvdata(cpu_dai);
 
 	sai->slots = slots;
-	sai->slot_width = slot_width;
+	sai->slot_width = 32u;
 
 	return 0;
 }
@@ -610,7 +611,7 @@ static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 	if (sai->is_lsb_first || sai->is_pdm_mode)
 		val_cr5 |= FSL_SAI_CR5_FBT(0);
 	else
-		val_cr5 |= FSL_SAI_CR5_FBT(word_width - 1);
+		val_cr5 |= FSL_SAI_CR5_FBT(slot_width - 1);
 
 	val_cr4 |= FSL_SAI_CR4_FRSZ(slots);
 

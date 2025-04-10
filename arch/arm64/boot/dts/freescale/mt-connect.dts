@@ -145,6 +145,7 @@
 			fsl,mclk-equal-bclk;
             cpu {
                 sound-dai = <&sai1>;
+				dai-tdm-slot-width = <32>;
             };
         };
     };
@@ -158,6 +159,7 @@
 			fsl,mclk-equal-bclk;
             cpu {
                 sound-dai = <&sai3>;
+				dai-tdm-slot-width = <32>;
             };
         };
     };
