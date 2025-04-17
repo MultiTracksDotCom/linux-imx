@@ -398,7 +398,6 @@
 		<&dante_osc_sclk>,
 		<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
-	fsl,sai-asynchronous-rx;
 	fsl,txs-rxs;
 	status = "okay";
 };
@@ -411,7 +410,6 @@
 		<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,dataline = <1 0x0F 0x0F>; /*I2S mode enabled, 4 TX lines, 4 RX lines*/
-	fsl,sai-asynchronous-rx;
 	fsl,txs-rxs;
 	status = "okay";
 };
