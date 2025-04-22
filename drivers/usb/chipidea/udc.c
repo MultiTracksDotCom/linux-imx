@@ -1969,7 +1969,7 @@ static int ci_udc_start(struct usb_gadget *gadget,
 
 	ci->driver = driver;
 
-	if (ci_udc_enable_sg_support(gadget))
+//	if (ci_udc_enable_sg_support(gadget))
 		ci->gadget.sg_supported = 1;
 
 	/* Start otg fsm for B-device */
