@@ -351,6 +351,11 @@
 		"LED1_GREEN", "LED2_GREEN", "LED3_GREEN", "LED4_DUAL_YELLOW", "LED5_DUAL_RED", "LED4_DUAL_GREEN", "LED5_DUAL_GREEN", "",
 		"", "", "", "", "", "", "", "",
 		"", "", "", "", "", "", "", "";
+	dpm_copro_en {
+		gpio-hog;
+		gpios = <1 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
 };
 
 &gpio2 {
@@ -374,6 +379,16 @@
 		"", "", "BRIDGE_LRCLK", "BRIDGE_BCLK", "BRIDGE_TXD0", "BRIDGE_TXD1", "S_BRIDGE_TXD2", "S_BRIDGE_TXD3",
 		"", "", "", "", "", "", "", "",
 		"", "", "", "", "HP_DAC_PDN_N", "SPI2_INT", "HP_DAC_I2CFIL", "DPM_HP_DAC_LRCK";
+	hp_dac_pdn_n {
+		gpio-hog;
+		gpios = <28 GPIO_ACTIVE_HIGH>;
+		output-high;
+	};
+	hp_dac_i2cfil {
+		gpio-hog;
+		gpios = <30 GPIO_ACTIVE_HIGH>;
+		output-low;
+	};
 };
 
 &gpio5 {
