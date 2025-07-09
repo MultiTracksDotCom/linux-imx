@@ -142,24 +142,26 @@
         pri-dai-link {
             link-name = "interproc audio";
             format = "i2s";
+			dai-tdm-slot-num = <8>;
+			dai-tdm-slot-width = <32>;
 			fsl,mclk-equal-bclk;
             cpu {
                 sound-dai = <&sai1>;
-				dai-tdm-slot-width = <32>;
             };
         };
     };
 
 	sound_Headphone {
         compatible = "fsl,imx-audio-card";
-        model = "imx-audio-card";			/*Dummy Codec*/
+        model = "imx-audio-card";		
         pri-dai-link {
             link-name = "Headphone audio";
             format = "i2s";
+			dai-tdm-slot-num = <2>;
+			dai-tdm-slot-width = <32>;
 			fsl,mclk-equal-bclk;
             cpu {
                 sound-dai = <&sai3>;
-				dai-tdm-slot-width = <32>;
             };
         };
     };
@@ -417,6 +419,7 @@
 		<&dante_osc_sclk>,
 		<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
+	fsl,dataline = <1 0x00 0x01>; /*I2S mode enabled, 0 RX lines, 1 TX lines*/
 	fsl,txs-rxs;
 	status = "okay";
 };
@@ -428,7 +431,7 @@
 		<&dante_osc_sclk>,
 		<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
-	fsl,dataline = <1 0x0F 0x0F>; /*I2S mode enabled, 4 TX lines, 4 RX lines*/
+	fsl,dataline = <1 0x0F 0x0F>; /*I2S mode enabled, 4 RX lines, 4 TX lines*/
 	fsl,txs-rxs;
 	status = "okay";
 };

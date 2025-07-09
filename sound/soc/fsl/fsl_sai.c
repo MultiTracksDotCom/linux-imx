@@ -550,7 +550,7 @@ static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 		slots = sai->slots;
 	else if (sai->bclk_ratio)
 		slots = sai->bclk_ratio / slot_width;
-
+		
 	pins = DIV_ROUND_UP(channels, slots);
 
 	/*
@@ -1266,8 +1266,7 @@ static int fsl_sai_read_dlcfg(struct fsl_sai *sai)
 	}
 
 	num_cfg = elems / 3;
-	/*  Add one more for default value */
-	cfg = devm_kzalloc(&pdev->dev, (num_cfg + 1) * sizeof(*cfg), GFP_KERNEL);
+	cfg = devm_kzalloc(&pdev->dev, (num_cfg) * sizeof(*cfg), GFP_KERNEL);
 	if (!cfg)
 		return -ENOMEM;
 
@@ -1283,7 +1282,7 @@ static int fsl_sai_read_dlcfg(struct fsl_sai *sai)
 	cfg[0].mask[1] = soc_dl;
 	cfg[0].start_off[1] = 0;
 	cfg[0].next_off[1] = 0;
-	for (i = 1, index = 0; i < num_cfg + 1; i++) {
+	for (i = 0, index = 0; i < num_cfg; i++) {
 		/*
 		 * type of dataline
 		 * 0 means default mode
@@ -1325,7 +1324,7 @@ static int fsl_sai_read_dlcfg(struct fsl_sai *sai)
 	}
 
 	sai->dl_cfg = cfg;
-	sai->dl_cfg_cnt = num_cfg + 1;
+	sai->dl_cfg_cnt = num_cfg;
 	return 0;
 }
 
