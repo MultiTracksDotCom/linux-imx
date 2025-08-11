@@ -294,6 +294,7 @@ static int fsl_sai_set_dai_fmt_tr(struct snd_soc_dai *cpu_dai,
 		 * data word.
 		 */
 		val_cr2 |= FSL_SAI_CR2_BCP;
+		val_cr4 |= FSL_SAI_CR4_FSE | FSL_SAI_CR4_FSP;
 		break;
 	case SND_SOC_DAIFMT_LEFT_J:
 		/*
