@@ -117,10 +117,10 @@ static struct usb_string strings_fn[] = {
 	[STR_IO_OT].s = "USBD In",
 	[STR_FU_IN].s = "Capture Volume",
 	[STR_FU_OUT].s = "Playback Volume",
-	[STR_AS_OUT_ALT0].s = "Playback Inactive",
-	[STR_AS_OUT_ALT1].s = "Playback Active",
-	[STR_AS_IN_ALT0].s = "Capture Inactive",
-	[STR_AS_IN_ALT1].s = "Capture Active",
+	[STR_AS_OUT_ALT0].s = "MT Connect Audio Out",
+	[STR_AS_OUT_ALT1].s = "MT Connect Audio Out",
+	[STR_AS_IN_ALT0].s = "MT Connect Audio In",
+	[STR_AS_IN_ALT1].s = "MT Connect Audio In",
 	{ },
 };
 
