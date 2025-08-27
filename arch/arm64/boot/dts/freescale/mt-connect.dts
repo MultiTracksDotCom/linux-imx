@@ -141,7 +141,7 @@
         model = "imx-audio-card";
         pri-dai-link {
             link-name = "interproc audio";
-            format = "i2s";
+            format = "dsp_b";
 			dai-tdm-slot-num = <8>;
 			dai-tdm-slot-width = <32>;
 			fsl,mclk-equal-bclk;
@@ -156,7 +156,7 @@
         model = "imx-audio-card";		
         pri-dai-link {
             link-name = "Headphone audio";
-            format = "i2s";
+            format = "dsp_b";
 			dai-tdm-slot-num = <2>;
 			dai-tdm-slot-width = <32>;
 			fsl,mclk-equal-bclk;
