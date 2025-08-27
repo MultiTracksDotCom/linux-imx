@@ -294,7 +294,11 @@ static int fsl_sai_set_dai_fmt_tr(struct snd_soc_dai *cpu_dai,
 		 * data word.
 		 */
 		val_cr2 |= FSL_SAI_CR2_BCP;
-		val_cr4 |= FSL_SAI_CR4_FSE | FSL_SAI_CR4_FSP;
+
+		/* NOTE: For some reason, even though we select dsp_b format, this setting is still being
+		called. The val_cr4 |= FSL_SAI_CR4_FSE | FSL_SAI_CR4_FSP is incorrect. For now on MT Connect
+		we will use this setting but corrected for our use. We MUST resolve this in future.
+		*/
 		break;
 	case SND_SOC_DAIFMT_LEFT_J:
 		/*
