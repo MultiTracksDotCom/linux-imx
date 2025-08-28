@@ -155,7 +155,7 @@ static int hw_wait_vbus_lower_bsv(struct ci_hdrc *ci)
 
 	while (hw_read_otgsc(ci, mask)) {
 		if (time_after(jiffies, elapse)) {
-#ifdef NEVER
+#ifdef MT_DEBUG
 			dev_err(ci->dev, "timeout waiting for %08x in OTGSC\n",
 					mask);
 #endif					
