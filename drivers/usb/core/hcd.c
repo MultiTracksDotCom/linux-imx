@@ -2943,7 +2943,9 @@ int usb_add_hcd(struct usb_hcd *hcd,
 	hcd->state = HC_STATE_RUNNING;
 	retval = hcd->driver->start(hcd);
 	if (retval < 0) {
+#ifdef MT_DEBUG
 		dev_err(hcd->self.controller, "startup error %d\n", retval);
+#endif
 		goto err_hcd_driver_start;
 	}
 
