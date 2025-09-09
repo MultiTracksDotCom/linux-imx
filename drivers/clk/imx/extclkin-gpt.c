@@ -410,7 +410,7 @@ static ssize_t device_read(struct file *filp,   /* ref: include/linux/fs.h   */
 
 	// if user buffer length isn't enough, log this and return no bytes
 	if (length < READ_BUFFER_SIZE) {
-		dev_warn(thisDev, "Device %s: read request had insufficient buffer size of %ld. Minimum required is %ld.\n", DEVICE_NAME, length, READ_BUFFER_SIZE);
+		dev_warn(thisDev, "Device %s: read request had insufficient buffer size of %ld. Minimum required is %d.\n", DEVICE_NAME, length, READ_BUFFER_SIZE);
 		return -EINVAL;
 	}
 
