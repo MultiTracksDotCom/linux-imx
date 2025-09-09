@@ -291,7 +291,7 @@ static int __init gpt_clkin_init(void)
 
 	dev_dbg(thisDev, "Driver %s got major number %d. Create a dev file with 'mknod /dev/%s c %d 0'.\n", DEVICE_NAME, deviceMajor, DEVICE_NAME, deviceMajor);
 
-	timerMem = ioremap_nocache(GPT_BASE_USED, GPT_MEM_SIZE);
+	timerMem = ioremap(GPT_BASE_USED, GPT_MEM_SIZE);
 
 	if (!timerMem) {
 		dev_err(thisDev, "Can't ioremap memory for GPT\n");
