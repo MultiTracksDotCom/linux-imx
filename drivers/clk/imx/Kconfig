@@ -135,3 +135,13 @@ config CLK_IMXRT1050
 	select MXC_CLK
 	help
 	    Build the driver for i.MXRT1050 CCM Clock Driver
+
+config EXTCLKIN_GPT
+	tristate "External Clock Input - GPT"
+	depends on ARCH_MXC || COMPILE_TEST
+	help
+	  External Clock Input driver - GPT variant.
+	  Uses an i.MX general purpose timer (GPT) as a
+	  clock input source, exposing to /dev/extclkin
+	  GPT Clock-Input needs a Linux kernel to be built.
+	  Part of the Audinate DEP platform tools.

@@ -58,3 +58,4 @@ obj-$(CONFIG_CLK_IMX7D)  += clk-imx7d.o
 obj-$(CONFIG_CLK_IMX7ULP) += clk-imx7ulp.o
 obj-$(CONFIG_CLK_IMXRT1050)  += clk-imxrt1050.o
 obj-$(CONFIG_CLK_VF610)  += clk-vf610.o
+obj-$(CONFIG_EXTCLKIN_GPT) += extclkin-gpt.o
