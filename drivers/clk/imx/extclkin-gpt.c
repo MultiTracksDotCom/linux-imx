@@ -277,7 +277,7 @@ static int __init gpt_clkin_init(void)
 
 	devNo = MKDEV(deviceMajor, 0);
 
-	devClass = class_create(THIS_MODULE, DEVICE_NAME);
+	devClass = class_create(DEVICE_NAME);
 	if (IS_ERR(devClass)) {
 		pr_err("Can't create class %s err: %ld\n", DEVICE_NAME, PTR_ERR(devClass));
 		return -EINVAL;
