@@ -30,13 +30,13 @@
 		#size-cells = <2>;
 		ranges;
 
-        /* Coretx-M4 will use TCM section (Tightly Coupled Memory) being much faster than DRAM */
+		/* Coretx-M4 will use TCM section (Tightly Coupled Memory) being much faster than DRAM */
 		/* 128 kB for Text */
 		cortex_m4_text: m4@7E0000 {
 			reg = <0 0x7E0000 0 0x20000>;
 			no-map;
 		};
-		
+
 		/* 128 kB for Data */
 		cortex_m4_data: m4@800000 {
 			reg = <0 0x800000 0 0x20000>;
@@ -137,34 +137,34 @@
 	};
 
 	sound_interprocessor {
-        compatible = "fsl,imx-audio-card";
-        model = "imx-audio-card";
-        pri-dai-link {
-            link-name = "interproc audio";
-            format = "dsp_b";
+		compatible = "fsl,imx-audio-card";
+		model = "imx-audio-card";
+		pri-dai-link {
+			link-name = "interproc audio";
+			format = "dsp_b";
 			dai-tdm-slot-num = <8>;
 			dai-tdm-slot-width = <32>;
 			fsl,mclk-equal-bclk;
-            cpu {
-                sound-dai = <&sai1>;
-            };
-        };
-    };
+			cpu {
+				sound-dai = <&sai1>;
+			};
+		};
+	};
 
 	sound_Headphone {
-        compatible = "fsl,imx-audio-card";
-        model = "imx-audio-card";		
-        pri-dai-link {
-            link-name = "Headphone audio";
-            format = "dsp_b";
+		compatible = "fsl,imx-audio-card";
+		model = "imx-audio-card";
+		pri-dai-link {
+			link-name = "Headphone audio";
+			format = "dsp_b";
 			dai-tdm-slot-num = <2>;
 			dai-tdm-slot-width = <32>;
 			fsl,mclk-equal-bclk;
-            cpu {
-                sound-dai = <&sai3>;
-            };
-        };
-    };
+			cpu {
+				sound-dai = <&sai3>;
+			};
+		};
+	};
 };
 
 &A53_0 {
@@ -350,9 +350,9 @@
 
 &gpio1 {
 	gpio-line-names = "", "DPM_COPRO_EN", "", "", "", "", "ETH_GB_SEL", "",
-		"LED1_GREEN", "LED2_GREEN", "LED3_GREEN", "LED4_DUAL_YELLOW", "LED5_DUAL_RED", "LED4_DUAL_GREEN", "LED5_DUAL_GREEN", "",
-		"", "", "", "", "", "", "", "",
-		"", "", "", "", "", "", "", "";
+	"LED1_GREEN", "LED2_GREEN", "LED3_GREEN", "LED4_DUAL_YELLOW", "LED5_DUAL_RED", "LED4_DUAL_GREEN", "LED5_DUAL_GREEN", "",
+	"", "", "", "", "", "", "", "",
+	"", "", "", "", "", "", "", "";
 	dpm_copro_en {
 		gpio-hog;
 		gpios = <1 GPIO_ACTIVE_HIGH>;
@@ -362,25 +362,25 @@
 
 &gpio2 {
 	gpio-line-names = "", "", "", "", "", "", "", "",
-		"", "", "", "", "", "", "", "",
-		"", "", "", "", "", "", "", "",
-		"", "", "", "", "", "", "", "";
+	"", "", "", "", "", "", "", "",
+	"", "", "", "", "", "", "", "",
+	"", "", "", "", "", "", "", "";
 };
 
 &gpio3 {
 	gpio-line-names = "", "", "", "", "", "", "", "",
-		"", "", "", "", "", "", "", "",
-		"", "", "", "", "", "", "", "",
-		"", "", "", "", "", "", "", "";
+	"", "", "", "", "", "", "", "",
+	"", "", "", "", "", "", "", "",
+	"", "", "", "", "", "", "", "";
 };
 
 &gpio4 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpio4>;
 	gpio-line-names = "", "", "BRIDGE_RXD0", "BRIDGE_RXD1", "S_BRIDGE_RXD2", "S_BRIDGE_RXD3", "", "",
-		"", "", "BRIDGE_LRCLK", "BRIDGE_BCLK", "BRIDGE_TXD0", "BRIDGE_TXD1", "S_BRIDGE_TXD2", "S_BRIDGE_TXD3",
-		"", "", "", "", "", "", "", "",
-		"", "", "", "", "HP_DAC_PDN_N", "SPI2_INT", "HP_DAC_I2CFIL", "DPM_HP_DAC_LRCK";
+	"", "", "BRIDGE_LRCLK", "BRIDGE_BCLK", "BRIDGE_TXD0", "BRIDGE_TXD1", "S_BRIDGE_TXD2", "S_BRIDGE_TXD3",
+	"", "", "", "", "", "", "", "",
+	"", "", "", "", "HP_DAC_PDN_N", "SPI2_INT", "HP_DAC_I2CFIL", "DPM_HP_DAC_LRCK";
 	hp_dac_pdn_n {
 		gpio-hog;
 		gpios = <28 GPIO_ACTIVE_HIGH>;
@@ -397,9 +397,9 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gpio5>;
 	gpio-line-names = "DPM_HP_DAC_BCLK", "DPM_HP_DAC_SD", "DPM_HP_DAC_MCLK", "", "", "PWM_MEMBRANE", "", "",
-		"", "", "SPI2_SCK", "SPI2_MOSI", "SPI2_MISO", "SPI2_NSS", "", "",
-		"DPM_I2C2_SCL", "DPM_I2C2_SDA", "", "", "DPM_I2C4_SCL", "DPM_I2C4_SDA", "", "",
-		"DPM_CONSOLE_RX", "DPM_CONSOLE_TX", "DPM_DEBUG_RX", "DPM_DEBUG_TX", "", "", "", "";
+	"", "", "SPI2_SCK", "SPI2_MOSI", "SPI2_MISO", "SPI2_NSS", "", "",
+	"DPM_I2C2_SCL", "DPM_I2C2_SDA", "", "", "DPM_I2C4_SCL", "DPM_I2C4_SDA", "", "",
+	"DPM_CONSOLE_RX", "DPM_CONSOLE_TX", "DPM_DEBUG_RX", "DPM_DEBUG_TX", "", "", "", "";
 };
 
 &i2c4 {
@@ -416,8 +416,8 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai3>;
 	clocks = <&clk IMX8MM_CLK_SAI3_IPG>, <&clk IMX8MM_CLK_DUMMY>,
-		<&dante_osc_sclk>,
-		<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
+	<&dante_osc_sclk>,
+	<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,dataline = <1 0x00 0x01>; /*I2S mode enabled, 0 RX lines, 1 TX lines*/
 	fsl,txs-rxs;
@@ -428,8 +428,8 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
 	clocks = <&clk IMX8MM_CLK_SAI1_IPG>, <&clk IMX8MM_CLK_DUMMY>,
-		<&dante_osc_sclk>,
-		<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
+	<&dante_osc_sclk>,
+	<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,dataline = <1 0x0F 0x0F>; /*I2S mode enabled, 4 RX lines, 4 TX lines*/
 	fsl,txs-rxs;
@@ -529,96 +529,96 @@
 &iomuxc {
 	pinctrl_fec1: fec1grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_ENET_MDC_ENET1_MDC				0x3
-			MX8MM_IOMUXC_ENET_MDIO_ENET1_MDIO			0x3
-			MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x91
-			MX8MM_IOMUXC_ENET_RD1_ENET1_RGMII_RD1		0x91
-			MX8MM_IOMUXC_ENET_RD2_ENET1_RGMII_RD2		0x91
-			MX8MM_IOMUXC_ENET_RD3_ENET1_RGMII_RD3		0x91
-			MX8MM_IOMUXC_ENET_RXC_ENET1_RGMII_RXC		0x91
-			MX8MM_IOMUXC_ENET_RX_CTL_ENET1_RGMII_RX_CTL	0x91
-			MX8MM_IOMUXC_ENET_TD0_ENET1_RGMII_TD0		0x1f
-			MX8MM_IOMUXC_ENET_TD1_ENET1_RGMII_TD1		0x1f
-			MX8MM_IOMUXC_ENET_TD2_ENET1_RGMII_TD2		0x1f
-			MX8MM_IOMUXC_ENET_TD3_ENET1_RGMII_TD3		0x1f
-			MX8MM_IOMUXC_ENET_TXC_ENET1_RGMII_TXC		0x1f
-			MX8MM_IOMUXC_ENET_TX_CTL_ENET1_RGMII_TX_CTL	0x1f
+		MX8MM_IOMUXC_ENET_MDC_ENET1_MDC				0x3
+		MX8MM_IOMUXC_ENET_MDIO_ENET1_MDIO			0x3
+		MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0		0x91
+		MX8MM_IOMUXC_ENET_RD1_ENET1_RGMII_RD1		0x91
+		MX8MM_IOMUXC_ENET_RD2_ENET1_RGMII_RD2		0x91
+		MX8MM_IOMUXC_ENET_RD3_ENET1_RGMII_RD3		0x91
+		MX8MM_IOMUXC_ENET_RXC_ENET1_RGMII_RXC		0x91
+		MX8MM_IOMUXC_ENET_RX_CTL_ENET1_RGMII_RX_CTL	0x91
+		MX8MM_IOMUXC_ENET_TD0_ENET1_RGMII_TD0		0x1f
+		MX8MM_IOMUXC_ENET_TD1_ENET1_RGMII_TD1		0x1f
+		MX8MM_IOMUXC_ENET_TD2_ENET1_RGMII_TD2		0x1f
+		MX8MM_IOMUXC_ENET_TD3_ENET1_RGMII_TD3		0x1f
+		MX8MM_IOMUXC_ENET_TXC_ENET1_RGMII_TXC		0x1f
+		MX8MM_IOMUXC_ENET_TX_CTL_ENET1_RGMII_TX_CTL	0x1f
 		>;
 	};
 
 	pinctrl_ethphy: dhcom-ethphy-grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_SPDIF_TX_GPIO5_IO3				0x1c4
-			MX8MM_IOMUXC_SPDIF_RX_GPIO5_IO4				0x1c4
+		MX8MM_IOMUXC_SPDIF_TX_GPIO5_IO3				0x1c4
+		MX8MM_IOMUXC_SPDIF_RX_GPIO5_IO4				0x1c4
 		>;
 	};
 
 	pinctrl_ir: irgrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_GPIO1_IO13_GPIO1_IO13			0x4f
+		MX8MM_IOMUXC_GPIO1_IO13_GPIO1_IO13			0x4f
 		>;
 	};
 
 	pinctrl_i2c1: i2c1grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_I2C1_SCL_I2C1_SCL				0x400001c3
-			MX8MM_IOMUXC_I2C1_SDA_I2C1_SDA				0x400001c3
+		MX8MM_IOMUXC_I2C1_SCL_I2C1_SCL				0x400001c3
+		MX8MM_IOMUXC_I2C1_SDA_I2C1_SDA				0x400001c3
 		>;
 	};
 
 	pinctrl_i2c2: i2c2grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_I2C2_SCL_I2C2_SCL				0x400001c3
-			MX8MM_IOMUXC_I2C2_SDA_I2C2_SDA				0x400001c3
+		MX8MM_IOMUXC_I2C2_SCL_I2C2_SCL				0x400001c3
+		MX8MM_IOMUXC_I2C2_SDA_I2C2_SDA				0x400001c3
 		>;
 	};
 
 	pinctrl_i2c4: i2c4grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_I2C4_SCL_I2C4_SCL				0x400001c3
-			MX8MM_IOMUXC_I2C4_SDA_I2C4_SDA				0x400001c3
+		MX8MM_IOMUXC_I2C4_SCL_I2C4_SCL				0x400001c3
+		MX8MM_IOMUXC_I2C4_SDA_I2C4_SDA				0x400001c3
 		>;
 	};
 
 	pinctrl_i2c1_gpio: i2c1-gpiogrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_I2C1_SCL_GPIO5_IO14			0x1c3
-			MX8MM_IOMUXC_I2C1_SDA_GPIO5_IO15			0x1c3
+		MX8MM_IOMUXC_I2C1_SCL_GPIO5_IO14			0x1c3
+		MX8MM_IOMUXC_I2C1_SDA_GPIO5_IO15			0x1c3
 		>;
 	};
 
 	pinctrl_i2c2_gpio: i2c2-gpiogrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_I2C2_SCL_GPIO5_IO16			0x1c3
-			MX8MM_IOMUXC_I2C2_SDA_GPIO5_IO17			0x1c3
+		MX8MM_IOMUXC_I2C2_SCL_GPIO5_IO16			0x1c3
+		MX8MM_IOMUXC_I2C2_SDA_GPIO5_IO17			0x1c3
 		>;
 	};
 
 	pinctrl_i2c4_gpio: i2c4-gpiogrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_I2C4_SCL_GPIO5_IO20			0x1c3
-			MX8MM_IOMUXC_I2C4_SDA_GPIO5_IO21			0x1c3
+		MX8MM_IOMUXC_I2C4_SCL_GPIO5_IO20			0x1c3
+		MX8MM_IOMUXC_I2C4_SDA_GPIO5_IO21			0x1c3
 		>;
 	};
 
 	pinctrl_pmic: pmicirqgrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_GPIO1_IO03_GPIO1_IO3			0x141
+		MX8MM_IOMUXC_GPIO1_IO03_GPIO1_IO3			0x141
 		>;
 	};
 
 	pinctrl_sai1: sai1grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_SAI1_TXFS_SAI1_TX_SYNC		0x80
-			MX8MM_IOMUXC_SAI1_TXC_SAI1_TX_BCLK		0x80
-			MX8MM_IOMUXC_SAI1_TXD0_SAI1_TX_DATA0	0xd6
-			MX8MM_IOMUXC_SAI1_TXD1_SAI1_TX_DATA1	0xd6
-			MX8MM_IOMUXC_SAI1_TXD2_SAI1_TX_DATA2	0xd6
-			MX8MM_IOMUXC_SAI1_TXD3_SAI1_TX_DATA3	0xd6
-			MX8MM_IOMUXC_SAI1_RXD0_SAI1_RX_DATA0	0xd6
-			MX8MM_IOMUXC_SAI1_RXD1_SAI1_RX_DATA1	0xd6
-			MX8MM_IOMUXC_SAI1_RXD2_SAI1_RX_DATA2	0xd6
-			MX8MM_IOMUXC_SAI1_RXD3_SAI1_RX_DATA3	0xd6
+		MX8MM_IOMUXC_SAI1_TXFS_SAI1_TX_SYNC		0x80
+		MX8MM_IOMUXC_SAI1_TXC_SAI1_TX_BCLK		0x80
+		MX8MM_IOMUXC_SAI1_TXD0_SAI1_TX_DATA0	0xd6
+		MX8MM_IOMUXC_SAI1_TXD1_SAI1_TX_DATA1	0xd6
+		MX8MM_IOMUXC_SAI1_TXD2_SAI1_TX_DATA2	0xd6
+		MX8MM_IOMUXC_SAI1_TXD3_SAI1_TX_DATA3	0xd6
+		MX8MM_IOMUXC_SAI1_RXD0_SAI1_RX_DATA0	0xd6
+		MX8MM_IOMUXC_SAI1_RXD1_SAI1_RX_DATA1	0xd6
+		MX8MM_IOMUXC_SAI1_RXD2_SAI1_RX_DATA2	0xd6
+		MX8MM_IOMUXC_SAI1_RXD3_SAI1_RX_DATA3	0xd6
 		>;
 	};
 
@@ -633,128 +633,128 @@
 
 	pinctrl_gpio4: gpio4grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28			0x06 /* HP_DAC_PDN */
-			MX8MM_IOMUXC_SAI3_RXD_GPIO4_IO30			0x06 /* HP_DAC_I2C_FIL */
+		MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28			0x06 /* HP_DAC_PDN */
+		MX8MM_IOMUXC_SAI3_RXD_GPIO4_IO30			0x06 /* HP_DAC_I2C_FIL */
 		>;
 	};
 
 	pinctrl_gpio5: gpio5grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_SAI3_MCLK_GPIO5_IO2			0x80 /* DANTE_OSC_MCLK */
+		MX8MM_IOMUXC_SAI3_MCLK_GPIO5_IO2			0x80 /* DANTE_OSC_MCLK */
 		>;
 	};
 
 	pinctrl_typec1: typec1grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_SD1_STROBE_GPIO2_IO11			0x159
+		MX8MM_IOMUXC_SD1_STROBE_GPIO2_IO11			0x159
 		>;
 	};
 
 	pinctrl_uart2: uart2grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_UART2_RXD_UART2_DCE_RX			0x140
-			MX8MM_IOMUXC_UART2_TXD_UART2_DCE_TX			0x140
+		MX8MM_IOMUXC_UART2_RXD_UART2_DCE_RX			0x140
+		MX8MM_IOMUXC_UART2_TXD_UART2_DCE_TX			0x140
 		>;
 	};
 
 	pinctrl_ecspi2: ecspi2grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_ECSPI2_MISO_ECSPI2_MISO		0x82
-			MX8MM_IOMUXC_ECSPI2_MOSI_ECSPI2_MOSI		0x82
-			MX8MM_IOMUXC_ECSPI2_SCLK_ECSPI2_SCLK		0x82
-			MX8MM_IOMUXC_ECSPI2_SS0_ECSPI2_SS0			0x82
-			MX8MM_IOMUXC_ECSPI2_SS0_GPIO5_IO13			0x140 /* ECSPI2 NSS */
-			MX8MM_IOMUXC_SAI3_RXC_GPIO4_IO29			0x82 /* ECSPI2 INT */
+		MX8MM_IOMUXC_ECSPI2_MISO_ECSPI2_MISO		0x82
+		MX8MM_IOMUXC_ECSPI2_MOSI_ECSPI2_MOSI		0x82
+		MX8MM_IOMUXC_ECSPI2_SCLK_ECSPI2_SCLK		0x82
+		MX8MM_IOMUXC_ECSPI2_SS0_ECSPI2_SS0			0x82
+		MX8MM_IOMUXC_ECSPI2_SS0_GPIO5_IO13			0x140 /* ECSPI2 NSS */
+		MX8MM_IOMUXC_SAI3_RXC_GPIO4_IO29			0x82 /* ECSPI2 INT */
 		>;
 	};
 
 	pinctrl_usdhc3: usdhc3grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_NAND_WE_B_USDHC3_CLK			0x190
-			MX8MM_IOMUXC_NAND_WP_B_USDHC3_CMD			0x1d0
-			MX8MM_IOMUXC_NAND_DATA04_USDHC3_DATA0		0x1d0
-			MX8MM_IOMUXC_NAND_DATA05_USDHC3_DATA1		0x1d0
-			MX8MM_IOMUXC_NAND_DATA06_USDHC3_DATA2		0x1d0
-			MX8MM_IOMUXC_NAND_DATA06_USDHC3_DATA2		0x1d0
-			MX8MM_IOMUXC_NAND_DATA07_USDHC3_DATA3		0x1d0
-			MX8MM_IOMUXC_NAND_RE_B_USDHC3_DATA4			0x1d0
-			MX8MM_IOMUXC_NAND_CE2_B_USDHC3_DATA5		0x1d0
-			MX8MM_IOMUXC_NAND_CE3_B_USDHC3_DATA6		0x1d0
-			MX8MM_IOMUXC_NAND_CLE_USDHC3_DATA7			0x1d0
-			MX8MM_IOMUXC_NAND_CE1_B_USDHC3_STROBE		0x190
+		MX8MM_IOMUXC_NAND_WE_B_USDHC3_CLK			0x190
+		MX8MM_IOMUXC_NAND_WP_B_USDHC3_CMD			0x1d0
+		MX8MM_IOMUXC_NAND_DATA04_USDHC3_DATA0		0x1d0
+		MX8MM_IOMUXC_NAND_DATA05_USDHC3_DATA1		0x1d0
+		MX8MM_IOMUXC_NAND_DATA06_USDHC3_DATA2		0x1d0
+		MX8MM_IOMUXC_NAND_DATA06_USDHC3_DATA2		0x1d0
+		MX8MM_IOMUXC_NAND_DATA07_USDHC3_DATA3		0x1d0
+		MX8MM_IOMUXC_NAND_RE_B_USDHC3_DATA4			0x1d0
+		MX8MM_IOMUXC_NAND_CE2_B_USDHC3_DATA5		0x1d0
+		MX8MM_IOMUXC_NAND_CE3_B_USDHC3_DATA6		0x1d0
+		MX8MM_IOMUXC_NAND_CLE_USDHC3_DATA7			0x1d0
+		MX8MM_IOMUXC_NAND_CE1_B_USDHC3_STROBE		0x190
 		>;
 	};
 
 	pinctrl_usdhc3_100mhz: usdhc3-100mhzgrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_NAND_WE_B_USDHC3_CLK			0x194
-			MX8MM_IOMUXC_NAND_WP_B_USDHC3_CMD			0x1d4
-			MX8MM_IOMUXC_NAND_DATA04_USDHC3_DATA0		0x1d4
-			MX8MM_IOMUXC_NAND_DATA05_USDHC3_DATA1		0x1d4
-			MX8MM_IOMUXC_NAND_DATA06_USDHC3_DATA2		0x1d4
-			MX8MM_IOMUXC_NAND_DATA07_USDHC3_DATA3		0x1d4
-			MX8MM_IOMUXC_NAND_RE_B_USDHC3_DATA4			0x1d4
-			MX8MM_IOMUXC_NAND_CE2_B_USDHC3_DATA5		0x1d4
-			MX8MM_IOMUXC_NAND_CE3_B_USDHC3_DATA6		0x1d4
-			MX8MM_IOMUXC_NAND_CLE_USDHC3_DATA7			0x1d4
-			MX8MM_IOMUXC_NAND_CE1_B_USDHC3_STROBE		0x194
+		MX8MM_IOMUXC_NAND_WE_B_USDHC3_CLK			0x194
+		MX8MM_IOMUXC_NAND_WP_B_USDHC3_CMD			0x1d4
+		MX8MM_IOMUXC_NAND_DATA04_USDHC3_DATA0		0x1d4
+		MX8MM_IOMUXC_NAND_DATA05_USDHC3_DATA1		0x1d4
+		MX8MM_IOMUXC_NAND_DATA06_USDHC3_DATA2		0x1d4
+		MX8MM_IOMUXC_NAND_DATA07_USDHC3_DATA3		0x1d4
+		MX8MM_IOMUXC_NAND_RE_B_USDHC3_DATA4			0x1d4
+		MX8MM_IOMUXC_NAND_CE2_B_USDHC3_DATA5		0x1d4
+		MX8MM_IOMUXC_NAND_CE3_B_USDHC3_DATA6		0x1d4
+		MX8MM_IOMUXC_NAND_CLE_USDHC3_DATA7			0x1d4
+		MX8MM_IOMUXC_NAND_CE1_B_USDHC3_STROBE		0x194
 		>;
 	};
 
 	pinctrl_usdhc3_200mhz: usdhc3-200mhzgrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_NAND_WE_B_USDHC3_CLK			0x196
-			MX8MM_IOMUXC_NAND_WP_B_USDHC3_CMD			0x1d6
-			MX8MM_IOMUXC_NAND_DATA04_USDHC3_DATA0		0x1d6
-			MX8MM_IOMUXC_NAND_DATA05_USDHC3_DATA1		0x1d6
-			MX8MM_IOMUXC_NAND_DATA06_USDHC3_DATA2		0x1d6
-			MX8MM_IOMUXC_NAND_DATA07_USDHC3_DATA3		0x1d6
-			MX8MM_IOMUXC_NAND_RE_B_USDHC3_DATA4			0x1d6
-			MX8MM_IOMUXC_NAND_CE2_B_USDHC3_DATA5		0x1d6
-			MX8MM_IOMUXC_NAND_CE3_B_USDHC3_DATA6		0x1d6
-			MX8MM_IOMUXC_NAND_CLE_USDHC3_DATA7			0x1d6
-			MX8MM_IOMUXC_NAND_CE1_B_USDHC3_STROBE		0x196
+		MX8MM_IOMUXC_NAND_WE_B_USDHC3_CLK			0x196
+		MX8MM_IOMUXC_NAND_WP_B_USDHC3_CMD			0x1d6
+		MX8MM_IOMUXC_NAND_DATA04_USDHC3_DATA0		0x1d6
+		MX8MM_IOMUXC_NAND_DATA05_USDHC3_DATA1		0x1d6
+		MX8MM_IOMUXC_NAND_DATA06_USDHC3_DATA2		0x1d6
+		MX8MM_IOMUXC_NAND_DATA07_USDHC3_DATA3		0x1d6
+		MX8MM_IOMUXC_NAND_RE_B_USDHC3_DATA4			0x1d6
+		MX8MM_IOMUXC_NAND_CE2_B_USDHC3_DATA5		0x1d6
+		MX8MM_IOMUXC_NAND_CE3_B_USDHC3_DATA6		0x1d6
+		MX8MM_IOMUXC_NAND_CLE_USDHC3_DATA7			0x1d6
+		MX8MM_IOMUXC_NAND_CE1_B_USDHC3_STROBE		0x196
 		>;
 	};
 
 	pinctrl_wdog: wdoggrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_GPIO1_IO02_WDOG1_WDOG_B		0x166
+		MX8MM_IOMUXC_GPIO1_IO02_WDOG1_WDOG_B		0x166
 		>;
 	};
 
 	pinctrl_backlight: backlightgrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_GPIO1_IO01_PWM1_OUT			0x06
+		MX8MM_IOMUXC_GPIO1_IO01_PWM1_OUT			0x06
 		>;
 	};
 
 	pinctrl_pwm_led: pwmledgrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_SPDIF_EXT_CLK_PWM1_OUT			0x16
+		MX8MM_IOMUXC_SPDIF_EXT_CLK_PWM1_OUT			0x16
 		>;
 	};
 
 	pinctrl_pwm_led: pwmledgrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_SPDIF_EXT_CLK_PWM1_OUT			0x16
+		MX8MM_IOMUXC_SPDIF_EXT_CLK_PWM1_OUT			0x16
 		>;
 	};
 
 	pinctrl_gpio_led: gpio-led-grp {
 		fsl,pins = <
-			MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11			0x186
+		MX8MM_IOMUXC_GPIO1_IO11_GPIO1_IO11			0x186
 		>;
 	};
 
 	pinctrl_flexspi: flexspigrp {
 		fsl,pins = <
-			MX8MM_IOMUXC_NAND_ALE_QSPI_A_SCLK			0x1c2
-			MX8MM_IOMUXC_NAND_CE0_B_QSPI_A_SS0_B		0x82
-			MX8MM_IOMUXC_NAND_DATA00_QSPI_A_DATA0		0x82
-			MX8MM_IOMUXC_NAND_DATA01_QSPI_A_DATA1		0x82
-			MX8MM_IOMUXC_NAND_DATA02_QSPI_A_DATA2		0x82
-			MX8MM_IOMUXC_NAND_DATA03_QSPI_A_DATA3		0x82
+		MX8MM_IOMUXC_NAND_ALE_QSPI_A_SCLK			0x1c2
+		MX8MM_IOMUXC_NAND_CE0_B_QSPI_A_SS0_B		0x82
+		MX8MM_IOMUXC_NAND_DATA00_QSPI_A_DATA0		0x82
+		MX8MM_IOMUXC_NAND_DATA01_QSPI_A_DATA1		0x82
+		MX8MM_IOMUXC_NAND_DATA02_QSPI_A_DATA2		0x82
+		MX8MM_IOMUXC_NAND_DATA03_QSPI_A_DATA3		0x82
 		>;
 	};
 };
