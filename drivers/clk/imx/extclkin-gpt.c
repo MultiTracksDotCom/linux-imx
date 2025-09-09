@@ -424,12 +424,9 @@ static ssize_t device_read(struct file *filp,   /* ref: include/linux/fs.h   */
 	return bytesRead;
 }
 
-module_init(gpt_clkin_init);
-module_exit(gpt_clkin_exit);
+module_init(gpt_clkin_init)
+module_exit(gpt_clkin_exit)
 
 MODULE_LICENSE(DRIVER_LICENSE);
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
-MODULE_SUPPORTED_DEVICE(DEVICE_NAME);
-MODULE_DESCRIPTION("NXP i.MX91 clock driver");
-MODULE_LICENSE("GPL v2");
