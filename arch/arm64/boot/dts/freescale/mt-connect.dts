@@ -5,6 +5,7 @@
 
 /dts-v1/;
 
+#include <dt-bindings/clock/imx8mm-clock.h>
 #include <dt-bindings/leds/common.h>
 #include <dt-bindings/usb/pd.h>
 #include "imx8mm.dtsi"
@@ -164,6 +165,16 @@
 				sound-dai = <&sai3>;
 			};
 		};
+	};
+};
+
+&soc {
+	clkin_gpt@302e0000 {
+		compatible = "audinate,extclkin-gpt";
+		reg = <0x302e0000 0x10000>;
+		clocks = <&dante_osc_lrclk>;
+		clock-names = "gpt_clk";
+		status = "okay";
 	};
 };
 
