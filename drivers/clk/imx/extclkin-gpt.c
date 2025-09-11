@@ -78,41 +78,43 @@
 #define GPT_MEM_SIZE 0x00010000UL
 
 /* Timer Register address offsets */
-#define GPT_CR 0x0000U
-#define GPT_PR 0x0004U
-#define GPT_SR 0x0008U
-#define GPT_IR 0x000CU
-#define GPT_OCR1 0x0010U
-#define GPT_OCR2 0x0014U
-#define GPT_OCR3 0x0018U
-#define GPT_ICR1 0x001CU
-#define GPT_ICR2 0x0020U
-#define GPT_CNT 0x0024U
+#define GPT_CR		0x0000U
+#define GPT_PR		0x0004U
+#define GPT_SR		0x0008U
+#define GPT_IR		0x000CU
+#define GPT_OCR1	0x0010U
+#define GPT_OCR2	0x0014U
+#define GPT_OCR3	0x0018U
+#define GPT_ICR1	0x001CU
+#define GPT_ICR2	0x0020U
+#define GPT_CNT	0x0024U
 
 /* Timer register bit definitions */
-#define GPT_CR_EN (1UL << 0) // enable
-#define GPT_CR_ENMOD (1UL << 1) // enable mode. 1: reset count when disabled
-#define GPT_CR_DBGEN (1UL << 2) // debug mode enable, 1: GPT is enabled in debug mode
-#define GPT_CR_WAITEN (1UL << 3) // Wait Mode: 1: GPT is enabled in wait mode
-#define GPT_CR_DOZEEN (1UL << 4) // Doze Mode: 1: GPT is enabled in doze mode
-#define GPT_CR_STOPEN (1UL << 5) // Stop Mode: 1: GPT is enabled in stop mode
-#define GPT_CR_CLKSRC_MASK (7UL << 6) // mask for clocksource bits
-#define GPT_CR_CLKSRC_NOCLK (0UL << 6) // no clock
-#define GPT_CR_CLKSRC_PERIPH (1UL << 6) // peripheral clock (ipg_clk)
-#define GPT_CR_CLKSRC_HIGHFREQ (2UL << 6) // high frequency reference clock (ipg_clk_highfreq)
-#define GPT_CR_CLKSRC_EXT (3UL << 6) // external clock
-#define GPT_CR_CLKSRC_32K (4UL << 6) // Low frequency reference clock (ipg_clk_32k)
-#define GPT_CR_CLKSRC_XTAL (5UL << 6) // Crystal oscillator as reference clock (ipg_clk_24M)
-#define GPT_CR_FFR (1UL << 9) // Free-Run or Restart mode: 1: Free-Run mode, rolls over to 0 after reaching 0xFFFF FFFF
-#define GPT_CR_EN_24M (1UL << 10) // 1: Enable 24 MHz clock input from crystal
-#define GPT_CR_SWR (1UL << 15) // Software reset 1: to/in reset
+#define GPT_CR_EN		(1UL << 0)	// enable
+#define GPT_CR_ENMOD		(1UL << 1)	// enable mode. 1: reset count when disabled
+#define GPT_CR_DBGEN		(1UL << 2)	// debug mode
+						// enable, 1: GPT is enabled in debug mode
+#define GPT_CR_WAITEN		(1UL << 3)	// Wait Mode: 1: GPT is enabled in wait mode
+#define GPT_CR_DOZEEN		(1UL << 4)	// Doze Mode: 1: GPT is enabled in doze mode
+#define GPT_CR_STOPEN		(1UL << 5)	// Stop Mode: 1: GPT is enabled in stop mode
+#define GPT_CR_CLKSRC_MASK	(7UL << 6)	// mask for clocksource bits
+#define GPT_CR_CLKSRC_NOCLK	(0UL << 6)	// no clock
+#define GPT_CR_CLKSRC_PERIPH	(1UL << 6)	// peripheral clock (ipg_clk)
+#define GPT_CR_CLKSRC_HIGHFREQ	(2UL << 6)	// high frequency reference clock (ipg_clk_highfreq)
+#define GPT_CR_CLKSRC_EXT	(3UL << 6)	// external clock
+#define GPT_CR_CLKSRC_32K	(4UL << 6)	// Low frequency reference clock (ipg_clk_32k)
+#define GPT_CR_CLKSRC_XTAL	(5UL << 6)	// Crystal oscillator as reference clock (ipg_clk_24M)
+#define GPT_CR_FFR		(1UL << 9)	// Free-Run or Restart mode: 1: Free-Run	mode, rolls over to 0 after reaching 0xFFFF FFFF
+#define GPT_CR_EN_24M		(1UL << 10)	// 1: Enable 24 MHz clock input from crystal
+#define GPT_CR_SWR		(1UL << 15)	// Software reset 1: to/in reset
 
-#define GPT_SR_OF1 (1UL << 0) // Output compare 1 flag. 1: compare event has occurred
-#define GPT_SR_OF2 (1UL << 1) // Output compare 2 flag. 1: compare event has occurred
-#define GPT_SR_OF3 (1UL << 2) // Output compare 3 flag. 1: compare event has occurred
-#define GPT_SR_IF1 (1UL << 3) // Input capture 1 flag. 1: capture event has occurred.
-#define GPT_SR_IF2 (1UL << 4) // Input capture 2 flag. 1: capture event has occurred.
-#define GPT_SR_ROLLOVER (1UL << 5) // Rollover flag. 1: rollover has occurred.
+#define GPT_SR_OF1 (1UL << 0)	// Output compare 1 flag. 1: compare event has occurred
+#define GPT_SR_OF2 (1UL << 1)	// Output compare 2 flag. 1: compare event has occurred
+#define GPT_SR_OF3 (1UL << 2)	// Output compare 3 flag. 1: compare event has occurred
+#define GPT_SR_IF1 (1UL << 3)	// Input capture 1 flag. 1: capture event has occurred.
+#define GPT_SR_IF2 (1UL << 4)	// Input capture 2 flag. 1: capture event has occurred.
+
+#define GPT_SR_ROLLOVER (1UL << 5)	// Rollover flag. 1: rollover has occurred.
 
 /* Prototypes */
 static int device_open(struct inode *, struct file *);
