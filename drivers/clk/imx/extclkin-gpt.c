@@ -246,8 +246,7 @@ static inline u32 get_count(u8 *rollover)
 		// ensure it's clear
 		status = reg_read(GPT_SR);
 		if (status & GPT_SR_ROLLOVER) {
-			// Using the device pointer from the platform device
-			dev_err(NULL, "can't clear rollover flag.\n");
+			dev_err(extclkin_dev, "can't clear rollover flag.\n");
 		}
 	} else {
 		*rollover = 0;
@@ -262,8 +261,7 @@ static inline u32 get_count(u8 *rollover)
 static int device_open(struct inode *inode, struct file *file)
 {
 
-	// Using the device pointer from the platform device
-	dev_dbg(NULL, "Device %s opened. Max line length: %u + 1\n", DEVICE_NAME, MAX_LINE_LENGTH);
+	dev_dbg(extclkin_dev, "Device %s opened. Max line length: %u + 1\n", DEVICE_NAME, MAX_LINE_LENGTH);
 
 	/* Increment usage count to protect against module removal. */
 	try_module_get(THIS_MODULE);
@@ -277,8 +275,7 @@ static int device_release(struct inode *inode, struct file *file)
 {
 	/* Decrement usage count so module can be removed. */
 	module_put(THIS_MODULE);
-	// Using the device pointer from the platform device
-	dev_dbg(NULL, "Device %s released.\n", DEVICE_NAME);
+	dev_dbg(extclkin_dev, "Device %s released.\n", DEVICE_NAME);
 	return SUCCESS;
 }
 
@@ -299,8 +296,7 @@ static ssize_t device_read(struct file *filp, /* ref: include/linux/fs.h */
 	unsigned long flags; // flags for saving IRQ state
 
 
-	// Using the device pointer from the platform device
-	dev_dbg(NULL, "Device %s read length %lu pos %lld offset %lld\n", DEVICE_NAME, length, filp->f_pos, *offset);
+	dev_dbg(extclkin_dev, "Device %s read length %lu pos %lld offset %lld\n", DEVICE_NAME, length, filp->f_pos, *offset);
 
 	/* quick EOF return for reads that aren't from the start */
 	if (*offset != 0 || filp->f_pos != 0) {
@@ -328,8 +324,7 @@ static ssize_t device_read(struct file *filp, /* ref: include/linux/fs.h */
 	/* handle rollover condition */
 	if (rollover) {
 		overflowCount++;
-		// Using the device pointer from the platform device
-		dev_dbg(NULL, "Device %s: rollover detected, count %u.\n", DEVICE_NAME, overflowCount);
+		dev_dbg(extclkin_dev, "Device %s: rollover detected, count %u.\n", DEVICE_NAME, overflowCount);
 	}
 	/* Finished with exclusivity */
 	mutex_unlock(&accessTimer);
@@ -345,20 +340,17 @@ static ssize_t device_read(struct file *filp, /* ref: include/linux/fs.h */
 
 	// if user buffer length isn't enough, log this and return no bytes
 	if (length < READ_BUFFER_SIZE) {
-		// Using the device pointer from the platform device
-		dev_warn(NULL, "Device %s: read request had insufficient buffer size of %ld. Minimum required is %d.\n", DEVICE_NAME, length, READ_BUFFER_SIZE);
+		dev_warn(extclkin_dev, "Device %s: read request had insufficient buffer size of %ld. Minimum required is %d.\n", DEVICE_NAME, length, READ_BUFFER_SIZE);
 		return -EINVAL;
 	}
 
 	// write back to user buffer, check for error
 	if (copy_to_user(buffer, readBuf, bytesRead)) {
-		// Using the device pointer from the platform device
-		dev_err(NULL, "Device %s: couldn't write to device read buffer.\n", DEVICE_NAME);
+		dev_err(extclkin_dev, "Device %s: couldn't write to device read buffer.\n", DEVICE_NAME);
 		return -EFAULT;
 	}
 
-	// Using the device pointer from the platform device
-	dev_dbg(NULL, "Device %s: bytes read: %ld\n", DEVICE_NAME, bytesRead);
+	dev_dbg(extclkin_dev, "Device %s: bytes read: %ld\n", DEVICE_NAME, bytesRead);
 	return bytesRead;
 }
 
@@ -427,7 +419,7 @@ static int extclkin_probe(struct platform_device *pdev)
 		goto err_destroy_class;
 	}
 
-	dev_dbg(thisDev, "Driver %s got major number %d. Create a dev file with 'mknod /dev/%s c %d 0'.\n", DEVICE_NAME, deviceMajor, DEVICE_NAME, deviceMajor);
+	dev_dbg(extclkin_dev, "Driver %s got major number %d. Create a dev file with 'mknod /dev/%s c %d 0'.\n", DEVICE_NAME, deviceMajor, DEVICE_NAME, deviceMajor);
 
 	setup_gpt();
 
