@@ -139,8 +139,6 @@
 
 	dante_osc_fbclk: dante-osc-fbclk {
 		compatible = "fixed-clock";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_fbclk>;
 		#clock-cells = <0>;
 		clock-frequency = <10000000>;
 		clock-output-names = "dante_osc_fbclk";
@@ -180,6 +178,8 @@
 &soc {
 	clkin_gpt@302e0000 {
 		compatible = "audinate,extclkin-gpt";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_fbclk>;
 		reg = <0x302e0000 0x10000>;
 		clocks = <&dante_osc_fbclk>;
 		clock-names = "gpt_clk";
