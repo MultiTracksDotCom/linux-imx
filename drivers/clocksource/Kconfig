@@ -607,6 +607,16 @@ config TIMER_IMX_SYS_CTR
 	  Enable this option to use i.MX system counter timer as a
 	  clockevent.
 
+config EXTCLKIN_GPT
+	tristate "External Clock Input - GPT"
+	depends on ARCH_MXC || COMPILE_TEST
+	help
+	  External Clock Input driver - GPT variant.
+	  Uses an i.MX general purpose timer (GPT) as a
+	  clock input source, exposing to /dev/extclkin
+	  GPT Clock-Input needs a Linux kernel to be built.
+	  Part of the Audinate DEP platform tools.
+
 config CLKSRC_LOONGSON1_PWM
 	bool "Clocksource using Loongson1 PWM"
 	depends on MACH_LOONGSON32 || COMPILE_TEST
