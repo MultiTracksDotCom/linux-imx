@@ -289,7 +289,7 @@
 			buck1_reg: BUCK1 {
 				regulator-name = "BUCK1";
 				regulator-min-microvolt = <780000>;
-				regulator-max-microvolt = <850000>;
+				regulator-max-microvolt = <1000000>;
 				regulator-boot-on;
 				regulator-always-on;
 				regulator-ramp-delay = <1250>;
@@ -318,7 +318,7 @@
 			buck2_reg: BUCK2 {
 				regulator-name = "BUCK2";
 				regulator-min-microvolt = <805000>;
-				regulator-max-microvolt = <950000>;
+				regulator-max-microvolt = <1000000>;
 				regulator-boot-on;
 				regulator-always-on;
 				regulator-ramp-delay = <1250>;
