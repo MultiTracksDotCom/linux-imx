@@ -187,6 +187,21 @@
 	};
 };
 
+&a53_opp_table {
+
+	opp-1200000000 {
+		/delete-property/ opp-supported-hw;
+	};
+
+	opp-1600000000 {
+		/delete-property/ opp-supported-hw;
+	};
+
+	opp-1800000000 {
+		/delete-property/ opp-supported-hw;
+	};
+};
+
 &A53_0 {
 	cpu-supply = <&buck2_reg>;
 };
