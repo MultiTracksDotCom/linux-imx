@@ -119,7 +119,7 @@
 	dante_osc_mclk: dante-osc-mclk {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
-		clock-frequency = <12288000>;
+		clock-frequency = <24576000>;
 		clock-output-names = "dante_osc_mclk";
 	};
 
@@ -451,11 +451,12 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai3>;
 	clocks = <&clk IMX8MM_CLK_SAI3_IPG>, <&clk IMX8MM_CLK_DUMMY>,
-	<&dante_osc_sclk>,
+	<&dante_osc_mclk>,
 	<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,dataline = <1 0x00 0x01>; /*I2S mode enabled, 0 RX lines, 1 TX lines*/
 	fsl,txs-rxs;
+	fsl,sai-mclk-direction-output;
 	status = "okay";
 };
 
@@ -463,11 +464,13 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
 	clocks = <&clk IMX8MM_CLK_SAI1_IPG>, <&clk IMX8MM_CLK_DUMMY>,
-	<&dante_osc_sclk>,
+	<&dante_osc_mclk>,
 	<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,dataline = <1 0x0F 0x0F>; /*I2S mode enabled, 4 RX lines, 4 TX lines*/
 	fsl,txs-rxs;
+	fsl,sai-multi-lane;
+	fsl,sai-mclk-direction-output;
 	status = "okay";
 };
 
