@@ -3,6 +3,7 @@
  *
  * Copyright (C) 2016 Asahi Kasei Microdevices Corporation
  *  Author				Date		Revision	kernel version
+ * Samuel Morris    10/7/25		2.0
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  * Tsuyoshi Mutsuro    16/06/11		1.0			3.18.25
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
@@ -23,11 +24,10 @@
 #include <linux/spi/spi.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/types.h>
 #include <linux/regmap.h>
 #include <linux/of_gpio.h>
 #include <linux/gpio.h>
-#include <sound/soc.h>
-#include <sound/soc-dapm.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/mutex.h>
@@ -35,13 +35,14 @@
 #include <linux/vmalloc.h>
 #include <sound/initval.h>
 #include <linux/ioctl.h>
-#include <sound/tlv.h>
-#include <sound/pcm_params.h>
-#include <sound/pcm.h>
-#include <linux/types.h>
-#include <sound/ak4432_pdata.h>
-#include "ak4432.h"
 
+#include <sound/pcm.h>
+#include <sound/pcm_params.h>
+#include <sound/soc.h>
+#include <sound/soc-dapm.h>
+#include <sound/tlv.h>
+
+#include "ak4432.h"
 
 #ifdef AK4432_DEBUG
 #define akdbgprt printk
@@ -67,7 +68,7 @@ struct ak4432_priv {
 	int fs;		//sampling rate
 };
 
-unsigned int ak4432_read_register(struct snd_soc_codec *codec, unsigned int reg);
+unsigned int ak4432_read_register(struct snd_soc_component *codec, unsigned int reg);
 
 /* ak4432 register cache & default register settings */
 static const struct reg_default ak4432_reg[] = {
@@ -123,8 +124,8 @@ static int get_reg_debug( struct snd_kcontrol *kcontrol,struct snd_ctl_elem_valu
 
 static int set_reg_debug( struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-    u32    reg = ucontrol->value.enumerated.item[0];
+	struct snd_soc_component *codec = snd_soc_kcontrol_component(kcontrol);
+	u32    reg = ucontrol->value.enumerated.item[0];
 	int    i, value;
 
 	nReg= reg ;
@@ -142,8 +143,8 @@ static int set_reg_debug( struct snd_kcontrol *kcontrol, struct snd_ctl_elem_val
 
 static int get_digfil(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *codec = snd_soc_kcontrol_component(kcontrol);	//16/06/13
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 
 	ucontrol->value.enumerated.item[0] = ak4432->digfil;
 
@@ -152,8 +153,8 @@ static int get_digfil(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *
 
 static int get_sds(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *codec = snd_soc_kcontrol_component(kcontrol);
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 
 	ucontrol->value.enumerated.item[0] = ak4432->sds;
 
@@ -162,8 +163,8 @@ static int get_sds(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *uco
 
 static int set_digfil(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *codec = snd_soc_kcontrol_component(kcontrol);
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 
 	int reg, num;
 
@@ -173,21 +174,20 @@ static int set_digfil(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *
 	ak4432->digfil = num;
 	akdbgprt("\t[AK4432] %s(%d) digfil=%d\n",__FUNCTION__,__LINE__, ak4432->digfil);
 
-
 	//write DASD, DASL bit
-	reg = snd_soc_read(codec, AK4432_03_CONTROL2);
+	reg = snd_soc_component_read(codec, AK4432_03_CONTROL2);
 	reg &= ~AK4432_SDSL_MASK;
 
 	reg |= ((ak4432->digfil & 0x03) << 3);
-	snd_soc_update_bits( codec, AK4432_03_CONTROL2, AK4432_SDSL_MASK, reg);
+	snd_soc_component_update_bits( codec, AK4432_03_CONTROL2, AK4432_SDSL_MASK, reg);
 
 	return 0;
 };
 
 static int set_sds(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec = snd_soc_kcontrol_codec(kcontrol);
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *codec = snd_soc_kcontrol_component(kcontrol);
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 
 	int reg;
 
@@ -196,11 +196,11 @@ static int set_sds(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *uco
 	ak4432->sds = ucontrol->value.enumerated.item[0];
 
 	//write SDS1-0 bits
-	reg = snd_soc_read(codec, AK4432_02_DATA_INTERFACE);
+	reg = snd_soc_component_read(codec, AK4432_02_DATA_INTERFACE);
 	reg &= ~AK4432_SDS01_MASK;
 
 	reg |= ((ak4432->sds & 0x03) << 5 );
-	snd_soc_update_bits( codec, AK4432_02_DATA_INTERFACE, AK4432_SDS01_MASK, reg);
+	snd_soc_component_update_bits( codec, AK4432_02_DATA_INTERFACE, AK4432_SDS01_MASK, reg);
 
 	return 0;
 
@@ -221,14 +221,14 @@ static const struct snd_kcontrol_new ak4432_snd_controls[] = {
 	SOC_ENUM_EXT( "AK4432 Digital Filter Setting", ak4432_dac_enum[0], get_digfil, set_digfil ),
 	SOC_ENUM_EXT( "AK4432 SDS Setting", ak4432_dac_enum[1], get_sds, set_sds ),
 	SOC_ENUM( "AK4432 TDM Mode Setting", ak4432_dac_enum[2] ),
-	SOC_ENUM( "AK4432 Attenuation transition Time Setting", ak4432_dac_enum[3] ),
+	SOC_ENUM( "AK4432 Attenuation Time Setting", ak4432_dac_enum[3] ),
 #ifdef AK4432_DEBUG
 	SOC_ENUM_EXT("All Reg Read", ak4432_debug_enum[0], get_reg_debug, set_reg_debug),
 #endif
 
 };
 
-static const char* ak4432_dac_select_texts[] = {	"OFF",	"ON"	};
+static const char* ak4432_dac_select_texts[] = {"OFF","ON"};
 
 static const struct soc_enum ak4432_dac_mux_enum =
 	SOC_ENUM_SINGLE_VIRT(ARRAY_SIZE(ak4432_dac_select_texts), ak4432_dac_select_texts);
@@ -246,21 +246,22 @@ static const struct snd_soc_dapm_widget ak4432_dapm_widgets[] = {
 
 static const struct snd_soc_dapm_route ak4432_intercon[] =
 {
-	{"AK4432 DAC",	NULL, "DAC to AOUT"},
-	{"DAC to AOUT",	"ON",	"AK4432 SDTI"},
-	{"AK4432 AOUT",	NULL, "AK4432 DAC"},
+	{"AK4432 DAC", NULL, "DAC to AOUT"},
+	{"DAC to AOUT", "ON", "AK4432 SDTI"},
+	{"AK4432 AOUT", NULL, "AK4432 DAC"},
 };
 
 
-static int ak4432_hw_params(struct snd_pcm_substream *substream,
-struct snd_pcm_hw_params *params,
-struct snd_soc_dai *dai)
+static int ak4432_hw_params(
+	struct snd_pcm_substream *substream,
+	struct snd_pcm_hw_params *params,
+	struct snd_soc_dai *dai)
 {
-	struct snd_soc_codec *codec = dai->codec;
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *codec = dai->component;
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 
 #ifdef AK4432_ACKS_USE_MANUAL_MODE
-	u8	dfs;
+	u8 dfs;
 #endif
 	int nfs1;
 	int dif2;
@@ -281,10 +282,10 @@ struct snd_soc_dai *dai)
 	}
 
 	dif2 <<= AK4432_DIF2_SHIFT;
-	snd_soc_update_bits( codec, AK4432_02_DATA_INTERFACE, AK4432_DIF2_MASK, dif2 );
+	snd_soc_component_update_bits( codec, AK4432_02_DATA_INTERFACE, AK4432_DIF2_MASK, dif2 );
 
 #ifdef AK4432_ACKS_USE_MANUAL_MODE
-	dfs = snd_soc_read(codec, AK4432_01_CONTROL1);
+	dfs = snd_soc_component_read(codec, AK4432_01_CONTROL1);
 	dfs &= ~AK4432_DFS01_MASK;
 
 
@@ -313,11 +314,11 @@ struct snd_soc_dai *dai)
 			return -EINVAL;
 	}
 
-	snd_soc_update_bits(codec, AK4432_01_CONTROL1, AK4432_DFS01_MASK,dfs);
+	snd_soc_component_update_bits(codec, AK4432_01_CONTROL1, AK4432_DFS01_MASK,dfs);
 
 
 #else
-	snd_soc_update_bits(codec, AK4432_01_CONTROL1,  0x01, 0x01);
+	snd_soc_component_update_bits(codec, AK4432_01_CONTROL1,  0x01, 0x01);
 #endif
 
 	return 0;
@@ -326,20 +327,20 @@ struct snd_soc_dai *dai)
 static int ak4432_set_dai_sysclk(struct snd_soc_dai *dai, int clk_id,
 								 unsigned int freq, int dir)
 {
-	akdbgprt("\t[AK4432] %s(%d)\n",__FUNCTION__,__LINE__);
+	akdbgprt("\t[AK4432] %s(%d) %d\n",__FUNCTION__,__LINE__,freq);
 
 	return 0;
 }
 
 static int ak4432_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 {
-	struct snd_soc_codec *codec = dai->codec;
+	struct snd_soc_component *codec = dai->component;
 	u8 format;
 
 
 
 	/* set master/slave audio interface */
-	format = snd_soc_read(codec, AK4432_02_DATA_INTERFACE);
+	format = snd_soc_component_read(codec, AK4432_02_DATA_INTERFACE);
 
 	akdbgprt("\t[AK4432] %s(%d) addr 02H = %02X\n",__FUNCTION__,__LINE__, format);
 
@@ -363,13 +364,16 @@ static int ak4432_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 		case SND_SOC_DAIFMT_LEFT_J:
 			format |= AK4432_DIF_MSB_LOW_FS_MODE;
 			break;
+		case SND_SOC_DAIFMT_DSP_B:
+			format |= AK4432_DIF_MSB_LOW_FS_MODE;
+			break;
 		default:
 			return -EINVAL;
 	}
 
 	/* set format */
 	akdbgprt("\t[AK4432] %s(%d) addr 02H = %02X\n",__FUNCTION__,__LINE__, format);
-	snd_soc_update_bits(codec, AK4432_02_DATA_INTERFACE, AK4432_DIF_MASK,format);
+	snd_soc_component_update_bits(codec, AK4432_02_DATA_INTERFACE, AK4432_DIF_MASK,format);
 
 
 	return 0;
@@ -406,9 +410,9 @@ static bool ak4432_readable(struct device *dev, unsigned int reg)
 }
 
 
-unsigned int ak4432_read_register(struct snd_soc_codec *codec, unsigned int reg)
+unsigned int ak4432_read_register(struct snd_soc_component *codec, unsigned int reg)
 {
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 #ifdef AK4432_I2C_IF
 	struct i2c_msg xfer[2];
 #endif
@@ -444,9 +448,9 @@ unsigned int ak4432_read_register(struct snd_soc_codec *codec, unsigned int reg)
 	return rx[0];
 }
 
-static int ak4432_write_register(struct snd_soc_codec *codec,  unsigned int reg,  unsigned int value)
+static int ak4432_write_register(struct snd_soc_component *codec,  unsigned int reg,  unsigned int value)
 {
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 	unsigned char tx[4];
 	int wlen;
 	int rc;
@@ -484,7 +488,7 @@ static int ak4432_trigger(struct snd_pcm_substream *substream, int cmd, struct s
 }
 
 
-static int ak4432_set_bias_level(struct snd_soc_codec *codec,
+static int ak4432_set_bias_level(struct snd_soc_component *codec,
 								 enum snd_soc_bias_level level)
 {
 	akdbgprt("\t[AK4432] %s(%d)\n",__FUNCTION__,__LINE__);
@@ -502,19 +506,21 @@ static int ak4432_set_bias_level(struct snd_soc_codec *codec,
 	return 0;
 }
 
-static int ak4432_set_dai_mute(struct snd_soc_dai *dai, int mute)
+static int ak4432_set_dai_mute(struct snd_soc_dai *dai, int mute, int direction)
 {
-	struct snd_soc_codec *codec = dai->codec;
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct snd_soc_component *codec = dai->component;
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 	int nfs, ndt, ret, reg, att_step;
 	int ats;	//ATS bits
 
 	nfs = ak4432->fs;
 
-	reg = snd_soc_read( codec,  AK4432_03_CONTROL2);
+	reg = snd_soc_component_read( codec,  AK4432_03_CONTROL2);
 	ats = ( reg & 0x04 ) >> 2;
 
-	akdbgprt("\t[AK4432] %s mute[%s] nfs[%d]\n",__FUNCTION__, mute ? "ON":"OFF", nfs);
+	akdbgprt("\t[AK4432] %s mute[%s] nfs[%d]\n", __FUNCTION__,
+		 mute ? "ON" : "OFF", nfs);
+	akdbgprt("\t[ak4432] mute-gpio[%d]",ak4432->mute_gpio);
 
 	switch( ats ){
 		case 0:
@@ -527,7 +533,7 @@ static int ak4432_set_dai_mute(struct snd_soc_dai *dai, int mute)
 	ndt = att_step / (nfs / 1000);
 
 	if (mute) {	//SMUTE: 1 , MUTE
-		ret = snd_soc_update_bits(codec, AK4432_03_CONTROL2, 0x02, 0x02); //softmute
+		ret = snd_soc_component_update_bits(codec, AK4432_03_CONTROL2, 0x02, 0x02); //softmute
 		mdelay(ndt);
 		akdbgprt("\t[AK4432] %s(%d) mdelay(%d ms)\n",__FUNCTION__,__LINE__, ndt);
 		if(ak4432->mute_gpio !=-1) gpio_set_value(ak4432->mute_gpio, 1); //External Mute ON
@@ -536,7 +542,7 @@ static int ak4432_set_dai_mute(struct snd_soc_dai *dai, int mute)
 	else {		// SMUTE: 0 ,NORMAL operation
 		if(ak4432->mute_gpio !=-1) gpio_set_value(ak4432->mute_gpio, 0); //External Mute OFF
 		akdbgprt("\t[AK4432] %s External Mute = OFF\n",__FUNCTION__);
-		ret = snd_soc_update_bits(codec, AK4432_03_CONTROL2, 0x02, 0);
+		ret = snd_soc_component_update_bits(codec, AK4432_03_CONTROL2, 0x02, 0);
 		mdelay(ndt);
 		akdbgprt("\t[AK4432] %s(%d) mdelay(%d ms)\n",__FUNCTION__,__LINE__, ndt);
 	}
@@ -560,7 +566,7 @@ static struct snd_soc_dai_ops ak4432_dai_ops = {
 	.set_sysclk	= ak4432_set_dai_sysclk,
 	.set_fmt	= ak4432_set_dai_fmt,
 	.trigger = ak4432_trigger,
-	.digital_mute = ak4432_set_dai_mute,
+	.mute_stream = ak4432_set_dai_mute,
 };
 
 struct snd_soc_dai_driver ak4432_dai[] = {
@@ -577,9 +583,9 @@ struct snd_soc_dai_driver ak4432_dai[] = {
 	},
 };
 
-static int ak4432_init_reg(struct snd_soc_codec *codec)
+static int ak4432_init_reg(struct snd_soc_component *codec)
 {
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 
 	if ( ak4432->mute_gpio > 0 ) gpio_set_value(ak4432->mute_gpio, 1); // External Mute ON
 
@@ -595,7 +601,7 @@ static int ak4432_init_reg(struct snd_soc_codec *codec)
 	akdbgprt("\t[AK4432] %s(%d)\n",__FUNCTION__,__LINE__);
 
 #ifndef AK4432_ACKS_USE_MANUAL_MODE
-	snd_soc_update_bits(codec, AK4432_01_CONTROL1,  0x01, 0x01);   // ACKS bit = 1; //00000001
+	snd_soc_component_update_bits(codec, AK4432_01_CONTROL1,  0x01, 0x01);   // ACKS bit = 1; //00000001
 	akdbgprt("\t[AK4432] %s ACKS bit = 1\n",__FUNCTION__);
 #endif
 
@@ -641,8 +647,6 @@ static int ak4432_parse_dt(struct ak4432_priv *ak4432)
 		return -1;
 	}
 
-	return 0;
-
 	ak4432->mute_gpio = of_get_named_gpio(np, "ak4432,mute_gpio", 0);
 	if (ak4432->mute_gpio < 0) {
 		printk(KERN_ERR "ak4432 mute pin(%u) is invalid(%d)\n", ak4432->mute_gpio, __LINE__);
@@ -659,9 +663,9 @@ static int ak4432_parse_dt(struct ak4432_priv *ak4432)
 }
 #endif
 
-static int ak4432_probe(struct snd_soc_codec *codec)
+static int ak4432_probe(struct snd_soc_component *codec)
 {
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 #ifndef CONFIG_OF
 	struct ak4432_platform_data *pdata = codec->dev->platform_data;
 #endif
@@ -678,8 +682,8 @@ static int ak4432_probe(struct snd_soc_codec *codec)
 	}
 #else
 	if( pdata != NULL ){
-	ak4432->pdn_gpio = pdata->pdn_gpio;
-	ak4432->mute_gpio = pdata->mute_gpio;
+		ak4432->pdn_gpio = pdata->pdn_gpio;
+		ak4432->mute_gpio = pdata->mute_gpio;
 	}
 #endif
 	if ( ak4432->pdn_gpio > 0 ) {
@@ -702,9 +706,9 @@ static int ak4432_probe(struct snd_soc_codec *codec)
 	return ret;
 }
 
-static int ak4432_remove(struct snd_soc_codec *codec)
+static void ak4432_remove(struct snd_soc_component *codec)
 {
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 
 	akdbgprt("\t[AK4432] %s(%d)\n",__FUNCTION__,__LINE__);
 
@@ -716,44 +720,41 @@ static int ak4432_remove(struct snd_soc_codec *codec)
 	if ( ak4432->mute_gpio > 0 ) {
 		gpio_free(ak4432->mute_gpio);
 	}
-
-	return 0;
 }
 
-static int ak4432_suspend(struct snd_soc_codec *codec)
+static int ak4432_suspend(struct snd_soc_component *codec)
 {
-	struct ak4432_priv *ak4432 = snd_soc_codec_get_drvdata(codec);
+	struct ak4432_priv *ak4432 = snd_soc_component_get_drvdata(codec);
 
 	akdbgprt("\t[AK4432] %s(%d)\n",__FUNCTION__,__LINE__);
 
 	ak4432_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	if ( ak4432->pdn_gpio > 0 ) {
 		gpio_set_value(ak4432->pdn_gpio, 0);
-		snd_soc_cache_init(codec);
+		snd_soc_component_cache_sync(codec);
 	}
 	else {
 #ifdef AK4432_PD_SUSPEND
-		snd_soc_cache_init(codec);
+		snd_soc_component_cache_sync(codec);
 #endif
 	}
 
 	return 0;
 }
 
-static int ak4432_resume(struct snd_soc_codec *codec)
+static int ak4432_resume(struct snd_soc_component *codec)
 {
-
 	ak4432_init_reg(codec);
 
 	return 0;
 }
 
 
-struct snd_soc_codec_driver soc_codec_dev_ak4432 = {
+struct snd_soc_component_driver soc_codec_dev_ak4432 = {
 	.probe = ak4432_probe,
 	.remove = ak4432_remove,
-	.suspend =	ak4432_suspend,
-	.resume =	ak4432_resume,
+	.suspend = ak4432_suspend,
+	.resume = ak4432_resume,
 
 	.read =  ak4432_read_register,
 	.write = ak4432_write_register,
@@ -763,6 +764,7 @@ struct snd_soc_codec_driver soc_codec_dev_ak4432 = {
 	.set_bias_level = ak4432_set_bias_level,
 	.dapm_widgets = ak4432_dapm_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(ak4432_dapm_widgets),
+	.idle_bias_on = 1,
 	.dapm_routes = ak4432_intercon,
 	.num_dapm_routes = ARRAY_SIZE(ak4432_intercon),
 };
@@ -792,7 +794,7 @@ MODULE_DEVICE_TABLE(of, ak4432_if_dt_ids);
 
 #ifdef AK4432_I2C_IF
 
-static int ak4432_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
+static int ak4432_i2c_probe(struct i2c_client *i2c)
 {
 	struct ak4432_priv *ak4432;
 	struct regmap *regmap;
@@ -812,7 +814,7 @@ static int ak4432_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *
 	ak4432->control_type = SND_SOC_I2C;
 	ak4432->i2c = i2c;
 
-	ret = snd_soc_register_codec(&i2c->dev,
+	ret = devm_snd_soc_register_component(&i2c->dev,
 		&soc_codec_dev_ak4432, &ak4432_dai[0], ARRAY_SIZE(ak4432_dai));
 	if(ret < 0 ){
 		kfree(ak4432);
@@ -822,11 +824,10 @@ static int ak4432_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id *
 	return ret;
 }
 
-static int ak4432_i2c_remove(struct i2c_client *client)
+static void ak4432_i2c_remove(struct i2c_client *client)
 {
-	snd_soc_unregister_codec(&client->dev);
+	snd_soc_unregister_component(&client->dev);
 	kfree(i2c_get_clientdata(client));
-	return 0;
 }
 
 static const struct i2c_device_id ak4432_i2c_id[] = {
@@ -871,7 +872,7 @@ static int ak4432_spi_probe(struct spi_device *spi)
 
 	spi_set_drvdata(spi, ak4432);
 
-	ret = snd_soc_register_codec(&spi->dev,
+	ret = devm_snd_soc_register_component(&spi->dev,
 		&soc_codec_dev_ak4432,  &ak4432_dai[0], ARRAY_SIZE(ak4432_dai));
 	akdbgprt("\t[AK4432] %s ret=%d\n",__FUNCTION__, ret);
 	if (ret < 0) {
