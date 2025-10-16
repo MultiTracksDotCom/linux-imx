@@ -161,7 +161,7 @@
 
 	sound_Headphone {
 		compatible = "fsl,imx-audio-card";
-		model = "imx-audio-card";
+		model = "ak4432-audio";
 		pri-dai-link {
 			link-name = "Headphone audio";
 			format = "dsp_b";
@@ -170,6 +170,9 @@
 			fsl,mclk-equal-bclk;
 			cpu {
 				sound-dai = <&sai3>;
+			};
+			codec {
+				sound-dai = <&ak4432>;
 			};
 		};
 	};
@@ -381,6 +384,17 @@
 	sda-gpios = <&gpio5 17 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 	status = "okay";
 
+	ak4432: ak4432@19 {
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_reg_hp_dac>;
+		#sound-dai-cells = <0>;
+		sound-name-prefix = "0";
+		compatible = "akm,ak4432";
+		reg = <0x19>;
+		ak4432,pdn-gpio = <&gpio4 28 GPIO_ACTIVE_HIGH>;
+		ak4432,i2cfil-gpio = <&gpio4 30 GPIO_ACTIVE_HIGH>;
+		status = "okay";
+	};
 };
 
 &gpio1 {
@@ -410,22 +424,10 @@
 };
 
 &gpio4 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpio4>;
 	gpio-line-names = "", "", "BRIDGE_RXD0", "BRIDGE_RXD1", "S_BRIDGE_RXD2", "S_BRIDGE_RXD3", "", "",
 	"", "", "BRIDGE_LRCLK", "BRIDGE_BCLK", "BRIDGE_TXD0", "BRIDGE_TXD1", "S_BRIDGE_TXD2", "S_BRIDGE_TXD3",
 	"", "", "", "", "", "", "", "",
 	"", "", "", "", "HP_DAC_PDN_N", "SPI2_INT", "HP_DAC_I2CFIL", "DPM_HP_DAC_LRCK";
-	hp_dac_pdn_n {
-		gpio-hog;
-		gpios = <28 GPIO_ACTIVE_HIGH>;
-		output-high;
-	};
-	hp_dac_i2cfil {
-		gpio-hog;
-		gpios = <30 GPIO_ACTIVE_HIGH>;
-		output-low;
-	};
 };
 
 &gpio5 {
@@ -675,10 +677,10 @@
 		>;
 	};
 
-	pinctrl_gpio4: gpio4grp {
+	pinctrl_reg_hp_dac: gpioreghpdac {
 		fsl,pins = <
-		MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28			0x06 /* HP_DAC_PDN */
-		MX8MM_IOMUXC_SAI3_RXD_GPIO4_IO30			0x06 /* HP_DAC_I2C_FIL */
+		MX8MM_IOMUXC_SAI3_RXD_GPIO4_IO30			0x106 /* HP_DAC_I2C_FIL Pull-down */
+		MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28			0x146 /* HP_DAC_PDN Pull-up */
 		>;
 	};
 
