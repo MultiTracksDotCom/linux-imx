@@ -27,7 +27,7 @@
 ****************************************************/
 #define AK4432_I2C_IF			//I2C IF
 //#define AK4432_PD_SUSPEND		
-#define AK4432_DEBUG			//used at debug mode
+//#define AK4432_DEBUG			//used at debug mode
 //#define AK4432_ACKS_USE_MANUAL_MODE
 
 #define AK4432_COMMAND_CODE_WRITE	0xC0
