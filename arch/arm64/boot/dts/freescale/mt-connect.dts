@@ -505,6 +505,12 @@
 	status = "okay";
 };
 
+&uart3 { /* debug */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+	status = "okay";
+};
+
 &usbotg1 {
 	hnp-disable;
 	srp-disable;
@@ -700,6 +706,13 @@
 		fsl,pins = <
 		MX8MM_IOMUXC_UART2_RXD_UART2_DCE_RX			0x140
 		MX8MM_IOMUXC_UART2_TXD_UART2_DCE_TX			0x140
+		>;
+	};
+
+	pinctrl_uart3: uart3grp {
+		fsl,pins = <
+		MX8MM_IOMUXC_ECSPI1_SCLK_UART3_DCE_RX 		0x140
+		MX8MM_IOMUXC_ECSPI1_MOSI_UART3_DCE_TX		0x140
 		>;
 	};
 
