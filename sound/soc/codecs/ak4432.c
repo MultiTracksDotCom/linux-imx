@@ -78,8 +78,8 @@ static const struct reg_default ak4432_reg[] = {
 	{ AK4432_01_CONTROL1, 0x00 },	/* AK4432_01_CONTROL1 - ACKS bit set for auto clock detection */
 	{ AK4432_02_DATA_INTERFACE, 0x06 },	/* AK4432_02_DATA_INTERFACE - TDM128, L1 R1 TDM slot, 24-bit LSB justified */
 	{ AK4432_03_CONTROL2, 0x01 },	/* AK4432_03_CONTROL2 - Normal operation */
-	{ AK4432_04_AOUTL_VOLUME_CONTROL, 0x40 },	/* AK4432_04_AOUTL_VOLUME_CONTROL - Max volume */
-	{ AK4432_05_AOUTR_VOLUME_CONTROL, 0x40 },	/* AK4432_05_AOUTR_VOLUME_CONTROL - Max volume */
+	{ AK4432_04_AOUTL_VOLUME_CONTROL, 0x40 },	/* AK4432_04_AOUTL_VOLUME_CONTROL -20dB */
+	{ AK4432_05_AOUTR_VOLUME_CONTROL, 0x40 },	/* AK4432_05_AOUTR_VOLUME_CONTROL -20dB */
 };
 
 /* DAC Digital Volume control:
@@ -683,8 +683,8 @@ static int ak4432_init_reg(struct snd_soc_component *codec)
 	snd_soc_component_update_bits(codec, AK4432_03_CONTROL2, AK4432_SYNCE_MASK, 0);
 	snd_soc_component_update_bits(codec, AK4432_03_CONTROL2, AK4432_SMUTE_MASK, 0);
 	snd_soc_component_update_bits(codec, AK4432_03_CONTROL2, AK4432_ATS_MASK, 0);
-	snd_soc_component_update_bits(codec, AK4432_04_AOUTL_VOLUME_CONTROL, 0xFF, 0x18);
-	snd_soc_component_update_bits(codec, AK4432_05_AOUTR_VOLUME_CONTROL, 0xFF, 0x18);
+	snd_soc_component_update_bits(codec, AK4432_04_AOUTL_VOLUME_CONTROL, 0xFF, 0x40);
+	snd_soc_component_update_bits(codec, AK4432_05_AOUTR_VOLUME_CONTROL, 0xFF, 0x40);
 	snd_soc_component_update_bits(codec, AK4432_00_POWER_MANAGEMENT, AK4432_PMDA_MASK, AK4432_PMDA_MASK);
 
 	akdbgprt("\t[AK4432] %s(%d)\n",__FUNCTION__,__LINE__);
