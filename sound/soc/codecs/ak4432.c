@@ -78,8 +78,8 @@ static const struct reg_default ak4432_reg[] = {
 	{ AK4432_01_CONTROL1, 0x00 },	/* AK4432_01_CONTROL1 - ACKS bit set for auto clock detection */
 	{ AK4432_02_DATA_INTERFACE, 0x06 },	/* AK4432_02_DATA_INTERFACE - TDM128, L1 R1 TDM slot, 24-bit LSB justified */
 	{ AK4432_03_CONTROL2, 0x01 },	/* AK4432_03_CONTROL2 - Normal operation */
-	{ AK4432_04_AOUTL_VOLUME_CONTROL, 0x18 },	/* AK4432_04_AOUTL_VOLUME_CONTROL - Max volume */
-	{ AK4432_05_AOUTR_VOLUME_CONTROL, 0x18 },	/* AK4432_05_AOUTR_VOLUME_CONTROL - Max volume */
+	{ AK4432_04_AOUTL_VOLUME_CONTROL, 0x40 },	/* AK4432_04_AOUTL_VOLUME_CONTROL - Max volume */
+	{ AK4432_05_AOUTR_VOLUME_CONTROL, 0x40 },	/* AK4432_05_AOUTR_VOLUME_CONTROL - Max volume */
 };
 
 /* DAC Digital Volume control:
