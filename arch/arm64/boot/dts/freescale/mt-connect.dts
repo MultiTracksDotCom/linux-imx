@@ -188,6 +188,14 @@
 		clock-names = "gpt_clk";
 		status = "okay";
 	};
+
+	extclkin_gpio@30200000 {
+		compatible = "audinate,extclkin-gpio";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_lrclk_gpio>;
+		reg = <0x30200000 0x10000>;
+		status = "okay";
+	};
 };
 
 &a53_opp_table {
@@ -602,6 +610,12 @@
 	pinctrl_fbclk: fbclk-grp {
 		fsl,pins = <
 		MX8MM_IOMUXC_I2C3_SCL_GPT2_CLK				0x80
+		>;
+	};
+
+	pinctrl_lrclk_gpio: lrclk-gpio-grp {
+		fsl,pins = <
+		MX8MM_IOMUXC_GPIO1_IO07_GPIO1_IO7			0x4f
 		>;
 	};
 
