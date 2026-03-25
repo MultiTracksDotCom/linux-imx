@@ -296,7 +296,7 @@ static int extclkingpio_probe(struct platform_device *pdev)
 
     device_number = MKDEV(device_major, 0);
 
-    device_class = class_create(THIS_MODULE, DEVICE_NAME);
+    device_class = class_create(DEVICE_NAME);
     if (IS_ERR(device_class)) {
         dev_err(dev, "Cannot create class %s err: %ld\n", DEVICE_NAME, PTR_ERR(device_class));
         unregister_chrdev(device_major, DEVICE_NAME);
