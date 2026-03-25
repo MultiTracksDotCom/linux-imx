@@ -73,6 +73,7 @@ obj-$(CONFIG_CLKSRC_MIPS_GIC)		+= mips-gic-timer.o
 obj-$(CONFIG_CLKSRC_IMX_GPT)		+= timer-imx-gpt.o
 obj-$(CONFIG_CLKSRC_IMX_TPM)		+= timer-imx-tpm.o
 obj-$(CONFIG_EXTCLKIN_GPT) += extclkin-gpt.o
+obj-$(CONFIG_EXTCLKIN_GPIO) += extclkin-gpio.o
 obj-$(CONFIG_TIMER_IMX_SYS_CTR)		+= timer-imx-sysctr.o
 obj-$(CONFIG_ASM9260_TIMER)		+= asm9260_timer.o
 obj-$(CONFIG_INGENIC_OST)		+= ingenic-ost.o
