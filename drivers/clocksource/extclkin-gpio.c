@@ -51,7 +51,7 @@
 /* Requires GPL compatible license for module */
 #define DRIVER_LICENSE "GPL"
 
-#define DRIVER_AUTHOR "Audinate <opensource@audinate.com>"
+#define DRIVER_AUTHOR "Sam Morris <scmorris.dev@gmail.com>"
 #define DRIVER_DESC "External clock input driver using i.MX general purpose input/output (GPIO)"
 
 /* Used throughout, eg as device file name */
