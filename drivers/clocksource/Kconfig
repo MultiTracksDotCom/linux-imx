@@ -617,6 +617,16 @@ config EXTCLKIN_GPT
 	  GPT Clock-Input needs a Linux kernel to be built.
 	  Part of the Audinate DEP platform tools.
 
+config EXTCLKIN_GPIO
+	tristate "External Clock Input - GPIO"
+	depends on ARCH_MXC || COMPILE_TEST
+	help
+	  External Clock Input driver - GPIO variant.
+	  Uses an i.MX general purpose input/output (GPIO) as a
+	  clock input source, exposing to /dev/extclkin-gpio
+	  GPIO Clock-Input needs a Linux kernel to be built.
+	  Part of the Audinate DEP platform tools.
+
 config CLKSRC_LOONGSON1_PWM
 	bool "Clocksource using Loongson1 PWM"
 	depends on MACH_LOONGSON32 || COMPILE_TEST
