@@ -46,6 +46,8 @@
 #include <linux/mutex.h>
 #include <linux/preempt.h>
 #include <linux/uaccess.h>
+#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 
 
 /* Requires GPL compatible license for module */
@@ -198,67 +200,6 @@ static inline u64 get_lrclk_edge_ts(void)
 }
 
 /*
- * Initialise the GPIO clock input driver
- */
-static int __init gpio_clkin_init(void)
-{
-    pr_debug("Driver init in %s\n", __FILE__);
-    
-    device_major = register_chrdev(0, DEVICE_NAME, &fops);
-
-    if (device_major < 0) {
-        pr_err("Registering char device %s failed with %d\n", DEVICE_NAME, device_major);
-        return device_major;
-    }
-
-    device_number = MKDEV(device_major, 0);
-
-    device_class = class_create(THIS_MODULE, DEVICE_NAME);
-    if (IS_ERR(device_class)) {
-        pr_err("Cannot create class %s err: %ld\n", DEVICE_NAME, PTR_ERR(device_class));
-        return -EINVAL;
-    }
-
-    if (IS_ERR(this_device = device_create(device_class, NULL, device_number, NULL, DEVICE_NAME))) {
-        pr_err("Cannot create device /dev/%s err: %ld\n", DEVICE_NAME, PTR_ERR(this_device));
-        class_destroy(device_class);
-        return -EINVAL;
-    }
-
-    dev_dbg(this_device, "Driver %s got major number %d. Create a dev file with 'mknod /dev/%s c %d 0'.\n", DEVICE_NAME, device_major, DEVICE_NAME, device_major);
-
-    gpio_mem = ioremap(GPIO_BASE_USED, GPIO_MEM_SIZE);
-
-    if (!gpio_mem) {
-        dev_err(this_device, "Cannot ioremap memory for GPIO\n");
-        device_destroy(device_class, device_number);
-        class_destroy(device_class);
-        return -ENOMEM;
-    }
-
-    setup_gpio();
-
-    dev_info(this_device, "driver initialised\n");
-
-    // Returning non-zero indicates module can't be loaded
-    return SUCCESS;
-}
-
-/*
- * Exit out of the driver / module. 
- * De-register, destroy, cleanup, stop, ... all the things
- */
-static void __exit gpio_clkin_exit(void)
-{
-    dev_dbg(this_device, "exiting...\n");
-
-    iounmap(gpio_mem);
-    device_destroy(device_class, device_number);
-    class_destroy(device_class);
-    unregister_chrdev(device_major, DEVICE_NAME);
-}
-
-/*
  * Called when a process tries to open the device file.
  * eg cat /dev/DEVICE_NAME
  */
@@ -328,8 +269,84 @@ static ssize_t device_read(struct file *filp,   /* ref: include/linux/fs.h   */
     return bytes_read;
 }
 
-module_init(gpio_clkin_init);
-module_exit(gpio_clkin_exit);
+static const struct of_device_id extclkingpio_of_match[] = {
+    { .compatible = "audinate,extclkin-gpio", },
+    { /* Sentinel */ }
+};
+
+MODULE_DEVICE_TABLE(of, extclkingpio_of_match);
+
+static int extclkingpio_probe(struct platform_device *pdev)
+{
+    struct device *dev = &pdev->dev;
+
+    dev_info(dev, "Driver probing for device tree node: %s\n", of_node_full_name(pdev->dev.of_node));
+
+    device_major = register_chrdev(0, DEVICE_NAME, &fops);
+
+    if (device_major < 0) {
+        dev_err(dev, "Registering char device %s failed with %d\n", DEVICE_NAME, device_major);
+        return device_major;
+    }
+
+    device_number = MKDEV(device_major, 0);
+
+    device_class = class_create(THIS_MODULE, DEVICE_NAME);
+    if (IS_ERR(device_class)) {
+        dev_err(dev, "Cannot create class %s err: %ld\n", DEVICE_NAME, PTR_ERR(device_class));
+        unregister_chrdev(device_major, DEVICE_NAME);
+        return -EINVAL;
+    }
+
+    if (IS_ERR(this_device = device_create(device_class, dev, device_number, NULL, DEVICE_NAME))) {
+        dev_err(dev, "Cannot create device /dev/%s err: %ld\n", DEVICE_NAME, PTR_ERR(this_device));
+        class_destroy(device_class);
+        unregister_chrdev(device_major, DEVICE_NAME);
+        return -EINVAL;
+    }
+
+    dev_dbg(this_device, "Driver %s got major number %d. Create a dev file with 'mknod /dev/%s c %d 0'.\n", DEVICE_NAME, device_major, DEVICE_NAME, device_major);
+
+    gpio_mem = ioremap(GPIO_BASE_USED, GPIO_MEM_SIZE);
+
+    if (!gpio_mem) {
+        dev_err(this_device, "Cannot ioremap memory for GPIO\n");
+        device_destroy(device_class, device_number);
+        class_destroy(device_class);
+        unregister_chrdev(device_major, DEVICE_NAME);
+        return -ENOMEM;
+    }
+
+    setup_gpio();
+
+    dev_info(dev, "driver initialised\n");
+
+    return SUCCESS;
+}
+
+static int extclkingpio_remove(struct platform_device *pdev)
+{
+    dev_dbg(&pdev->dev, "exiting...\n");
+
+    iounmap(gpio_mem);
+    device_destroy(device_class, device_number);
+    class_destroy(device_class);
+    unregister_chrdev(device_major, DEVICE_NAME);
+
+    return 0;
+}
+
+static struct platform_driver extclkingpio_driver = {
+    .probe = extclkingpio_probe,
+    .remove = extclkingpio_remove,
+    .driver = {
+        .name = "extclkin-gpio",
+        .of_match_table = of_match_ptr(extclkingpio_of_match),
+    },
+};
+
+/* Replace module_init and module_exit with platform driver macros */
+module_platform_driver(extclkingpio_driver);
 
 MODULE_LICENSE(DRIVER_LICENSE);
 MODULE_AUTHOR(DRIVER_AUTHOR);
