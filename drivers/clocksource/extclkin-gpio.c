@@ -71,14 +71,6 @@
 #define READ_BUFFER_SIZE (MAX_LINE_LENGTH + 1)
 
 #define SUCCESS 0
-#define GPIO_MEM_SIZE    0x00010000UL
-
-/* GPIO base addresses */
-#define GPIO1_BASE   0x30200000UL
-#define GPIO2_BASE   0x30210000UL
-#define GPIO3_BASE   0x30220000UL
-#define GPIO4_BASE   0x30230000UL
-#define GPIO5_BASE   0x30240000UL
 
 /* GPIO register address offsets */
 #define GPIO_DR         0x0000U // Data register
@@ -90,8 +82,7 @@
 #define GPIO_ISR        0x0018U // Interrupt status register
 #define GPIO_EDGE_SEL   0x001CU // Edge select register
 
-/* Select which GPIO block and pin to be used */
-#define GPIO_BASE_USED GPIO1_BASE
+/* Select which GPIO pin to be used */
 #define GPIO_PIN_USED 7
 #define GPIO_REG_BIT_USED (1UL << GPIO_PIN_USED)
 
@@ -278,9 +269,23 @@ MODULE_DEVICE_TABLE(of, extclkingpio_of_match);
 
 static int extclkingpio_probe(struct platform_device *pdev)
 {
+    int ret;
+    struct resource *res;
     struct device *dev = &pdev->dev;
 
     dev_info(dev, "Driver probing for device tree node: %s\n", of_node_full_name(pdev->dev.of_node));
+
+    res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+    if (!res) {
+        dev_err(dev, "Failed to get platform I/O memory resource\n");
+        return -ENODEV;
+    }
+
+    gpio_mem = devm_ioremap_resource(dev, res);
+    if (IS_ERR(gpio_mem)) {
+        dev_err(dev, "Cannot ioremap memory for GPIO\n");
+        return PTR_ERR(gpio_mem);
+    }
 
     device_major = register_chrdev(0, DEVICE_NAME, &fops);
 
@@ -307,16 +312,6 @@ static int extclkingpio_probe(struct platform_device *pdev)
 
     dev_dbg(this_device, "Driver %s got major number %d. Create a dev file with 'mknod /dev/%s c %d 0'.\n", DEVICE_NAME, device_major, DEVICE_NAME, device_major);
 
-    gpio_mem = ioremap(GPIO_BASE_USED, GPIO_MEM_SIZE);
-
-    if (!gpio_mem) {
-        dev_err(this_device, "Cannot ioremap memory for GPIO\n");
-        device_destroy(device_class, device_number);
-        class_destroy(device_class);
-        unregister_chrdev(device_major, DEVICE_NAME);
-        return -ENOMEM;
-    }
-
     setup_gpio();
 
     dev_info(dev, "driver initialised\n");
@@ -328,7 +323,6 @@ static int extclkingpio_remove(struct platform_device *pdev)
 {
     dev_dbg(&pdev->dev, "exiting...\n");
 
-    iounmap(gpio_mem);
     device_destroy(device_class, device_number);
     class_destroy(device_class);
     unregister_chrdev(device_major, DEVICE_NAME);
