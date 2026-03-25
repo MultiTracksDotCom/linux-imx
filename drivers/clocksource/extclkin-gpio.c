@@ -82,10 +82,6 @@
 #define GPIO_ISR        0x0018U // Interrupt status register
 #define GPIO_EDGE_SEL   0x001CU // Edge select register
 
-/* Select which GPIO pin to be used */
-#define GPIO_PIN_USED 7
-#define GPIO_REG_BIT_USED (1UL << GPIO_PIN_USED)
-
 /* Limit the number of LRCLK edge detection polls to prevent the driver from going into an infinite loop */
 #define LRCLK_POLL_ATTEMPTS_MAX 10000
 
@@ -106,6 +102,11 @@ static char read_buffer[32];
 
 /* Protect state against multiple readers */
 DEFINE_MUTEX(access_gpio_clk);
+
+/* Default GPIO pin: 7 (GPIO1_IO07 on i.MX 8M EVK) */
+static unsigned int gpio_pin = 7;
+module_param(gpio_pin, uint, 0644);
+MODULE_PARM_DESC(gpio_pin, "GPIO pin number within the bank (0-31)");
 
 struct file_operations fops = {
     .read = device_read,
@@ -131,7 +132,7 @@ static inline void gpio_reg_write(u16 offset, u32 value)
 
 static inline u32 get_gpio_pin_value(void)
 {
-    return (gpio_reg_read(GPIO_DR) & GPIO_REG_BIT_USED) >> GPIO_PIN_USED;
+    return (gpio_reg_read(GPIO_DR) & (1UL << gpio_pin)) >> gpio_pin;
 }
 
 static inline void setup_gpio(void)
@@ -140,7 +141,7 @@ static inline void setup_gpio(void)
 
     // Set direction of the GPIO pin as input
     reg_val = gpio_reg_read(GPIO_GDIR);
-    reg_val &= ~GPIO_REG_BIT_USED;
+    reg_val &= ~(1UL << gpio_pin);
     gpio_reg_write(GPIO_GDIR, reg_val);
 }
 
@@ -314,7 +315,7 @@ static int extclkingpio_probe(struct platform_device *pdev)
 
     setup_gpio();
 
-    dev_info(dev, "driver initialised\n");
+    dev_info(dev, "driver initialised (GPIO pin %u)\n", gpio_pin);
 
     return SUCCESS;
 }
