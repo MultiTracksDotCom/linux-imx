@@ -40,13 +40,13 @@
 #include <linux/fs.h>
 #include <linux/device.h>
 #include <linux/types.h>
-#include <linux/io.h>
 #include <linux/timekeeping.h>
 #include <linux/mutex.h>
 #include <linux/preempt.h>
 #include <linux/uaccess.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/gpio/consumer.h>
 
 /* Requires GPL compatible license for module */
 #define DRIVER_LICENSE "GPL"
@@ -67,16 +67,6 @@
 
 #define SUCCESS 0
 
-/* GPIO register address offsets */
-#define GPIO_DR		0x0000U // Data register
-#define GPIO_GDIR	0x0004U // Direction register
-#define GPIO_PSR	0x0008U // Pad status register
-#define GPIO_ICR1	0x000CU // Interrupt configuration register 1
-#define GPIO_ICR2	0x0010U // Interrupt configuration register 2
-#define GPIO_IMR	0x0014U // Interrupt mask register
-#define GPIO_ISR	0x0018U // Interrupt status register
-#define GPIO_EDGE_SEL	0x001CU // Edge select register
-
 /* Limit the number of LRCLK edge detection polls to prevent the driver from going into an infinite loop */
 #define LRCLK_POLL_ATTEMPTS_MAX 10000
 
@@ -84,61 +74,23 @@
 static int device_open(struct inode *, struct file *);
 static int device_release(struct inode *, struct file *);
 static ssize_t device_read(struct file *, char *, size_t, loff_t *);
-static inline volatile u32 gpio_reg_read(u16 offset);
-static inline void gpio_reg_write(u16 offset, u32 value);
 
 /* Global variables */
 static int device_major;
 static dev_t device_number;
 static struct class *device_class;
 static struct device *this_device;
-static void __iomem *gpio_mem;
+static struct gpio_desc *lrclk_gpiod;
 static char read_buffer[READ_BUFFER_SIZE];
 
 /* Protect state against multiple readers */
 DEFINE_MUTEX(access_gpio_clk);
-
-/* Default GPIO pin: 7 (GPIO1_IO07 on i.MX 8M EVK) */
-static unsigned int gpio_pin = 7;
-module_param(gpio_pin, uint, 0644);
-MODULE_PARM_DESC(gpio_pin, "GPIO pin number within the bank (0-31)");
 
 struct file_operations fops = {
 	.read = device_read,
 	.open = device_open,
 	.release = device_release
 };
-
-/*
- * Read a GPIO register with the given offset from the base address.
- */
-static inline volatile u32 gpio_reg_read(u16 offset)
-{
-	return (volatile u32) readl(offset + gpio_mem);
-}
-
-/*
- * Write a GPIO register at the given offset.
- */
-static inline void gpio_reg_write(u16 offset, u32 value)
-{
-	writel(value, offset + gpio_mem);
-}
-
-static inline u32 get_gpio_pin_value(void)
-{
-	return (gpio_reg_read(GPIO_DR) & (1UL << gpio_pin)) >> gpio_pin;
-}
-
-static inline void setup_gpio(void)
-{
-	u32 reg_val;
-
-	// Set direction of the GPIO pin as input
-	reg_val = gpio_reg_read(GPIO_GDIR);
-	reg_val &= ~(1UL << gpio_pin);
-	gpio_reg_write(GPIO_GDIR, reg_val);
-}
 
 // Return the timestamp of the next falling LRCLK edge. Returns 0 in case of error.
 static inline u64 get_lrclk_edge_ts(void)
@@ -162,8 +114,8 @@ static inline u64 get_lrclk_edge_ts(void)
 #pragma GCC unroll 1
 	while (attempt) { // Loop over edges
 		register unsigned limit = LRCLK_POLL_ATTEMPTS_MAX;
-		val = get_gpio_pin_value();
-		while ((val == get_gpio_pin_value()) && (--limit)); // Fast loop waiting for edge
+		val = gpiod_get_value(lrclk_gpiod);
+		while ((val == gpiod_get_value(lrclk_gpiod)) && (--limit)); // Fast loop waiting for edge
 		host_ns = ktime_get_raw_ns(); // Fetch timestamp
 		if (limit == 0) { // Hit the limit
 			host_ns = 0; // Flag error
@@ -264,22 +216,15 @@ MODULE_DEVICE_TABLE(of, extclkingpio_of_match);
 static int extclkingpio_probe(struct platform_device *pdev)
 {
 	int ret;
-	struct resource *res;
 	struct device *dev = &pdev->dev;
 
 	dev_info(dev, "Driver probing for device tree node: %s\n",
 		 of_node_full_name(pdev->dev.of_node));
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res) {
-		dev_err(dev, "Failed to get platform I/O memory resource\n");
-		return -ENODEV;
-	}
-
-	gpio_mem = devm_ioremap_resource(dev, res);
-	if (IS_ERR(gpio_mem)) {
-		dev_err(dev, "Cannot ioremap memory for GPIO\n");
-		return PTR_ERR(gpio_mem);
+	lrclk_gpiod = devm_gpiod_get(dev, NULL, GPIOD_IN);
+	if (IS_ERR(lrclk_gpiod)) {
+		dev_err(dev, "Failed to get LRCLK GPIO: %ld\n", PTR_ERR(lrclk_gpiod));
+		return PTR_ERR(lrclk_gpiod);
 	}
 
 	device_major = register_chrdev(0, DEVICE_NAME, &fops);
@@ -311,9 +256,9 @@ static int extclkingpio_probe(struct platform_device *pdev)
 		"Driver %s got major number %d. Create a dev file with 'mknod /dev/%s c %d 0'.\n",
 		DEVICE_NAME, device_major, DEVICE_NAME, device_major);
 
-	setup_gpio();
-
-	dev_info(dev, "driver initialised (GPIO pin %u)\n", gpio_pin);
+	dev_info(dev, "driver initialised (GPIO %s pin %u)\n",
+		 gpiod_get_direction(lrclk_gpiod) == 0 ? "out" : "in",
+		 desc_to_gpio(lrclk_gpiod));
 
 	return SUCCESS;
 
