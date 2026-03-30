@@ -189,11 +189,11 @@
 		status = "okay";
 	};
 
-	extclkin_gpio@30200000 {
+	extclkin-gpio {
 		compatible = "audinate,extclkin-gpio";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_lrclk_gpio>;
-		reg = <0x30200000 0x10000>;
+		gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
 		status = "okay";
 	};
 };
