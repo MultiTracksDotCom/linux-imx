@@ -31,7 +31,7 @@
  * External LR clock input driver - i.MX 8M GPIO version
  *
  * This is a character device driver which returns time in nanoseconds
- * when read from - the linux monotonic raw time at the rising edge of the clock
+ * when read from - the linux monotonic raw time at the falling edge of the clock
  * connected to a GPIO pin.
  */
 #include <linux/module.h>
