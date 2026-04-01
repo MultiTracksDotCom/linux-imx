@@ -81,7 +81,6 @@ static dev_t device_number;
 static struct class *device_class;
 static struct device *this_device;
 static struct gpio_desc *lrclk_gpiod;
-static char read_buffer[READ_BUFFER_SIZE];
 
 /* Protect state against multiple readers */
 DEFINE_MUTEX(access_gpio_clk);
@@ -171,6 +170,7 @@ static ssize_t device_read(struct file *filp,   /* ref: include/linux/fs.h   */
 			   loff_t *offset       /* offset into file for read */
 			   )
 {
+	char read_buffer[READ_BUFFER_SIZE];
 	ssize_t bytes_read;
 	u64 host_ns;
 
