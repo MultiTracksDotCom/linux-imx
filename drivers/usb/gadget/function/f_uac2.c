@@ -989,10 +989,6 @@ static int afunc_validate_opts(struct g_audio *agdev, struct device *dev)
 
 	if (!opts->p_chmask && !opts->c_chmask)
 		msg = "no playback and capture channels";
-	else if (opts->p_chmask & ~UAC2_CHANNEL_MASK)
-		msg = "unsupported playback channels mask";
-	else if (opts->c_chmask & ~UAC2_CHANNEL_MASK)
-		msg = "unsupported capture channels mask";
 	else if ((opts->p_ssize < 1) || (opts->p_ssize > 4))
 		msg = "incorrect playback sample size";
 	else if ((opts->c_ssize < 1) || (opts->c_ssize > 4))
@@ -1090,14 +1086,25 @@ afunc_bind(struct usb_configuration *cfg, struct usb_function *fn)
 
 
 	/* Initialize the configurable parameters */
+	/*
+	 * UAC2 spec §4.1: bmChannelConfig bits 27-30 are reserved and must be
+	 * zero. For channel masks that exceed the 27 defined spatial positions
+	 * (bits 0-26), use bmChannelConfig=0 (non-predefined spatial locations)
+	 * with bNrChannels set from the popcount of the full mask. This is the
+	 * standard-compliant way to declare more than 27 channels.
+	 */
+	u32 c_chanconfig = (uac2_opts->c_chmask & ~UAC2_CHANNEL_MASK) ?
+		0 : uac2_opts->c_chmask;
+	u32 p_chanconfig = (uac2_opts->p_chmask & ~UAC2_CHANNEL_MASK) ?
+		0 : uac2_opts->p_chmask;
 	usb_out_it_desc.bNrChannels = num_channels(uac2_opts->c_chmask);
-	usb_out_it_desc.bmChannelConfig = cpu_to_le32(uac2_opts->c_chmask);
+	usb_out_it_desc.bmChannelConfig = cpu_to_le32(c_chanconfig);
 	io_in_it_desc.bNrChannels = num_channels(uac2_opts->p_chmask);
-	io_in_it_desc.bmChannelConfig = cpu_to_le32(uac2_opts->p_chmask);
+	io_in_it_desc.bmChannelConfig = cpu_to_le32(p_chanconfig);
 	as_out_hdr_desc.bNrChannels = num_channels(uac2_opts->c_chmask);
-	as_out_hdr_desc.bmChannelConfig = cpu_to_le32(uac2_opts->c_chmask);
+	as_out_hdr_desc.bmChannelConfig = cpu_to_le32(c_chanconfig);
 	as_in_hdr_desc.bNrChannels = num_channels(uac2_opts->p_chmask);
-	as_in_hdr_desc.bmChannelConfig = cpu_to_le32(uac2_opts->p_chmask);
+	as_in_hdr_desc.bmChannelConfig = cpu_to_le32(p_chanconfig);
 	as_out_fmt1_desc.bSubslotSize = uac2_opts->c_ssize;
 	as_out_fmt1_desc.bBitResolution = uac2_opts->c_ssize * 8;
 	as_in_fmt1_desc.bSubslotSize = uac2_opts->p_ssize;
