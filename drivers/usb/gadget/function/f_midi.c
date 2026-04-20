@@ -820,7 +820,8 @@ static int f_midi_register_card(struct f_midi *midi)
 
 	strcpy(card->driver, f_midi_longname);
 	strcpy(card->longname, f_midi_longname);
-	strcpy(card->shortname, f_midi_shortname);
+	strlcpy(card->shortname, midi->id ? midi->id : f_midi_shortname,
+		sizeof(card->shortname));
 
 	/* Set up rawmidi */
 	snd_component_add(card, "MIDI");
