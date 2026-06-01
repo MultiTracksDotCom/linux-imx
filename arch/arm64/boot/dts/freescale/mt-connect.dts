@@ -495,15 +495,29 @@
 };
 
 &ecspi2 {
-	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi2>;
+	pinctrl-0 = <&pinctrl_ecspi2 &pinctrl_stm_ipc>;
 	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
+	status = "okay";
 
-	spidev1: spi@0 {
+	stm_ipc: stm32-ipc@0 {
+		compatible = "multitracks,stm32-spi-ipc";
 		reg = <0>;
-		compatible = "rohm,dh2228fv";
-		spi-max-frequency = <500000>;
+		spi-max-frequency = <10000000>;
+		interrupt-parent = <&gpio2>;
+		interrupts = <11 IRQ_TYPE_EDGE_FALLING>;
+
+		usb1_connector: connector-usb1 {
+			compatible = "multitracks,stm32-usb-connector";
+			port-id = <0>;
+		};
+
+		usb2_connector: connector-usb2 {
+			compatible = "multitracks,stm32-usb-connector";
+			port-id = <1>;
+		};
 	};
 };
 
@@ -520,6 +534,7 @@
 };
 
 &usbotg1 {
+	extcon = <&usb1_connector>;
 	hnp-disable;
 	srp-disable;
 	adp-disable;
@@ -533,6 +548,7 @@
 };
 
 &usbotg2 {
+	extcon = <&usb2_connector>;
 	hnp-disable;
 	srp-disable;
 	adp-disable;
@@ -710,7 +726,7 @@
 		>;
 	};
 
-	pinctrl_typec1: typec1grp {
+	pinctrl_stm_ipc: stmipcgrp {
 		fsl,pins = <
 		MX8MM_IOMUXC_SD1_STROBE_GPIO2_IO11			0x159
 		>;
