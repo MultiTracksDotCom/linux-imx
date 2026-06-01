@@ -23,5 +23,6 @@ obj-$(CONFIG_EXTCON_QCOM_SPMI_MISC) += extcon-qcom-spmi-misc.o
 obj-$(CONFIG_EXTCON_RT8973A)	+= extcon-rt8973a.o
 obj-$(CONFIG_EXTCON_SM5502)	+= extcon-sm5502.o
 obj-$(CONFIG_EXTCON_USB_GPIO)	+= extcon-usb-gpio.o
+obj-$(CONFIG_EXTCON_STM32_SPI_IPC)	+= extcon-stm32-ipc.o
 obj-$(CONFIG_EXTCON_USBC_CROS_EC) += extcon-usbc-cros-ec.o
 obj-$(CONFIG_EXTCON_USBC_TUSB320) += extcon-usbc-tusb320.o
