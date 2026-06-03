@@ -9,7 +9,6 @@
 #include <linux/spi/spi.h>
 #include <linux/extcon-provider.h>
 #include <linux/interrupt.h>
-#include <linux/gpio/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/of_platform.h>
 #include <linux/slab.h>
