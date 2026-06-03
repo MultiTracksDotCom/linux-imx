@@ -123,7 +123,7 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 	if (rx_buf.type == MSG_TYPE_USB_EVENT) {
 		u8 port_info[2] = { rx_buf.port, rx_buf.state };
 
-		dev_info(&priv->spi->dev, "USB Event from STM32 on Port %d: State %d\n", rx_buf.port, rx_buf.state);
+		dev_dbg(&priv->spi->dev, "USB Event from STM32 on Port %d: State %d\n", rx_buf.port, rx_buf.state);
 		device_for_each_child(&priv->spi->dev, port_info, match_and_update_state);
 	}
 
