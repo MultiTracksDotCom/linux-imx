@@ -14,6 +14,7 @@
 #include <linux/slab.h>
 #include <linux/debugfs.h>
 #include <linux/mutex.h>
+#include <linux/crc8.h>
 
 #define DRIVER_NAME "stm-spi-ipc"
 
@@ -31,6 +32,8 @@ struct stm_ipc_packet {
 } __packed;
 
 /* Parent SPI controller private structure */
+DECLARE_CRC8_TABLE(stm_crc8_table);
+
 struct stm_ipc_priv {
 	struct spi_device *spi;
 	struct mutex lock;
@@ -102,6 +105,7 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 	};
 	struct spi_message m;
 	int ret;
+	u8 calc_crc;
 
 	mutex_lock(&priv->lock);
 
@@ -113,9 +117,24 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 		goto out;
 	}
 
-	/* Validate packet */
+	/* Validate magic byte */
 	if (rx_buf.magic != STM_IPC_MSG_MAGIC) {
 		dev_warn_ratelimited(&priv->spi->dev, "Invalid magic byte: 0x%02x\n", rx_buf.magic);
+		goto out;
+	}
+
+	/* Validate packet CRC */
+	calc_crc = crc8(stm_crc8_table, (const u8 *)&rx_buf, offsetof(struct stm_ipc_packet, crc), 0);
+	if (calc_crc != rx_buf.crc) {
+		dev_warn_ratelimited(&priv->spi->dev, "CRC mismatch: read 0x%02x, calculated 0x%02x\n",
+				     rx_buf.crc, calc_crc);
+		goto out;
+	}
+
+	/* Validate packet payload length for USB events */
+	if (rx_buf.type == MSG_TYPE_USB_EVENT && rx_buf.length != 2) {
+		dev_warn_ratelimited(&priv->spi->dev, "Invalid packet length: %u (expected 2)\n",
+				     rx_buf.length);
 		goto out;
 	}
 
@@ -215,6 +234,9 @@ static int stm_ipc_probe(struct spi_device *spi)
 	spi_set_drvdata(spi, priv);
 
 	struct dentry *parent;
+
+	/* Setup CRC8 lookup table (polynomial 0x07) */
+	crc8_populate_msb(stm_crc8_table, 0x07);
 
 	/* Initialize DebugFS subdirectory under /sys/kernel/debug/stm_ipc/<device> */
 	parent = debugfs_create_dir("stm_ipc", NULL);
