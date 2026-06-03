@@ -214,8 +214,20 @@ static int stm_ipc_probe(struct spi_device *spi)
 	mutex_init(&priv->lock);
 	spi_set_drvdata(spi, priv);
 
-	/* Initialize DebugFS root directory under /sys/kernel/debug/stm_ipc */
-	priv->debugfs_root = debugfs_create_dir("stm_ipc", NULL);
+	struct dentry *parent;
+
+	/* Initialize DebugFS subdirectory under /sys/kernel/debug/stm_ipc/<device> */
+	parent = debugfs_create_dir("stm_ipc", NULL);
+	if (IS_ERR_OR_NULL(parent)) {
+		dev_warn(&spi->dev, "Failed to create debugfs parent directory\n");
+		priv->debugfs_root = NULL;
+	} else {
+		priv->debugfs_root = debugfs_create_dir(dev_name(&spi->dev), parent);
+		if (IS_ERR_OR_NULL(priv->debugfs_root)) {
+			dev_warn(&spi->dev, "Failed to create debugfs root directory\n");
+			priv->debugfs_root = NULL;
+		}
+	}
 
 	/* Populate subnodes as platform devices (this probes the connector sub-drivers) */
 	ret = devm_of_platform_populate(&spi->dev);
