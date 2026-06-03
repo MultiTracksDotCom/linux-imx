@@ -19,15 +19,23 @@
 #define DRIVER_NAME "stm-spi-ipc"
 
 /* Protocol constants */
-#define STM_IPC_MSG_MAGIC   0x5A
-#define MSG_TYPE_USB_EVENT  0x01
+#define STM_IPC_MSG_MAGIC         0x5A
+#define MSG_TYPE_USB_EVENT        0x01
+#define STM_IPC_MSG_LEN_USB_EVENT 2
+#define STM_IPC_CRC8_POLYNOMIAL   0x07
+
+enum stm_ipc_usb_state {
+	STM_IPC_USB_STATE_DISCONNECTED = 0,
+	STM_IPC_USB_STATE_PERIPHERAL   = 1,
+	STM_IPC_USB_STATE_HOST         = 2,
+};
 
 struct stm_ipc_packet {
 	u8 magic;
 	u8 type;
 	u8 length;
 	u8 port;
-	u8 state; /* 0 = disconnected, 1 = peripheral (VBUS), 2 = host (ID) */
+	u8 state; /* enum stm_ipc_usb_state */
 	u8 crc;
 } __packed;
 
@@ -56,15 +64,15 @@ static const unsigned int stm_usb_cable[] = {
 static void stm_ipc_update_state(struct extcon_dev *edev, u8 state)
 {
 	switch (state) {
-	case 0: /* Disconnected */
+	case STM_IPC_USB_STATE_DISCONNECTED:
 		extcon_set_state_sync(edev, EXTCON_USB, false);
 		extcon_set_state_sync(edev, EXTCON_USB_HOST, false);
 		break;
-	case 1: /* Peripheral Mode (VBUS present) */
+	case STM_IPC_USB_STATE_PERIPHERAL:
 		extcon_set_state_sync(edev, EXTCON_USB_HOST, false);
 		extcon_set_state_sync(edev, EXTCON_USB, true);
 		break;
-	case 2: /* Host Mode (ID ground) */
+	case STM_IPC_USB_STATE_HOST:
 		extcon_set_state_sync(edev, EXTCON_USB, false);
 		extcon_set_state_sync(edev, EXTCON_USB_HOST, true);
 		break;
@@ -132,9 +140,9 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 	}
 
 	/* Validate packet payload length for USB events */
-	if (rx_buf.type == MSG_TYPE_USB_EVENT && rx_buf.length != 2) {
-		dev_warn_ratelimited(&priv->spi->dev, "Invalid packet length: %u (expected 2)\n",
-				     rx_buf.length);
+	if (rx_buf.type == MSG_TYPE_USB_EVENT && rx_buf.length != STM_IPC_MSG_LEN_USB_EVENT) {
+		dev_warn_ratelimited(&priv->spi->dev, "Invalid packet length: %u (expected %d)\n",
+				     rx_buf.length, STM_IPC_MSG_LEN_USB_EVENT);
 		goto out;
 	}
 
@@ -156,7 +164,7 @@ static int stm_ipc_sim_write(void *data, u64 val)
 {
 	struct stm_connector_priv *priv = data;
 
-	if (val > 2)
+	if (val > STM_IPC_USB_STATE_HOST)
 		return -EINVAL;
 
 	stm_ipc_update_state(priv->edev, (u8)val);
@@ -236,7 +244,7 @@ static int stm_ipc_probe(struct spi_device *spi)
 	struct dentry *parent;
 
 	/* Setup CRC8 lookup table (polynomial 0x07) */
-	crc8_populate_msb(stm_crc8_table, 0x07);
+	crc8_populate_msb(stm_crc8_table, STM_IPC_CRC8_POLYNOMIAL);
 
 	/* Initialize DebugFS subdirectory under /sys/kernel/debug/stm_ipc/<device> */
 	parent = debugfs_create_dir("stm_ipc", NULL);
