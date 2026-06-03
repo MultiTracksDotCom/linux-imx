@@ -514,6 +514,12 @@ struct bufdesc_ex {
  */
 #define FEC_QUIRK_HAS_MDIO_C45		BIT(24)
 
+/* i.MX8MM FEC hardware RX checksum offload incorrectly validates certain UDP
+ * packets, causing them to be silently dropped by the kernel UDP stack.
+ * Force software re-validation for UDP by downgrading CHECKSUM_UNNECESSARY.
+ */
+#define FEC_QUIRK_ERR_UDP_CSUM		BIT(25)
+
 struct bufdesc_prop {
 	int qid;
 	/* Address of Rx and Tx buffers */
