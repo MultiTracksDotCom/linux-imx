@@ -4024,6 +4024,42 @@ static int fec_hwtstamp_set(struct net_device *ndev,
 	return fec_ptp_set(ndev, config, extack);
 }
 
+/* Provide direct MDIO bus register access via SIOCGMIIREG/SIOCSMIIREG.
+ *
+ * The generic phy_do_ioctl_running() path only works when a phydev is
+ * attached to this net_device and routes register access through the PHY
+ * state machine (with side effects such as autoneg restarts). On boards
+ * where the FEC is wired to a DSA switch (e.g. SJA1105) over a fixed-link,
+ * there is no attached phydev, so the generic path returns -ENODEV and the
+ * MDIO bus is unreachable from userspace.
+ *
+ * Intercept the two MII register commands and service them directly against
+ * fep->mii_bus so bring-up/diagnostic tooling can reach any device address
+ * on the bus without side effects. All other commands fall through to the
+ * standard handler. (Reworked from a patch shipped with the Audinate EVK.)
+ */
+static int fec_enet_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
+{
+	struct fec_enet_private *fep = netdev_priv(ndev);
+	struct mii_ioctl_data *mii = if_mii(rq);
+	int ret;
+
+	switch (cmd) {
+	case SIOCGMIIREG:
+		ret = mdiobus_read_nested(fep->mii_bus, mii->phy_id,
+					  mii->reg_num);
+		if (ret < 0)
+			return ret;
+		mii->val_out = ret;
+		return 0;
+	case SIOCSMIIREG:
+		return mdiobus_write_nested(fep->mii_bus, mii->phy_id,
+					    mii->reg_num, mii->val_in);
+	default:
+		return phy_do_ioctl_running(ndev, rq, cmd);
+	}
+}
+
 static const struct net_device_ops fec_netdev_ops = {
 	.ndo_open		= fec_enet_open,
 	.ndo_stop		= fec_enet_close,
@@ -4033,7 +4069,7 @@ static const struct net_device_ops fec_netdev_ops = {
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_tx_timeout		= fec_timeout,
 	.ndo_set_mac_address	= fec_set_mac_address,
-	.ndo_eth_ioctl		= phy_do_ioctl_running,
+	.ndo_eth_ioctl		= fec_enet_ioctl,
 	.ndo_set_features	= fec_set_features,
 	.ndo_bpf		= fec_enet_bpf,
 	.ndo_xdp_xmit		= fec_enet_xdp_xmit,
