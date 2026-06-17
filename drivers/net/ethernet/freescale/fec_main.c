@@ -1119,6 +1119,11 @@ fec_restart(struct net_device *ndev)
 			 */
 			if (fep->quirks & FEC_QUIRK_ERR_UDP_CSUM)
 				racc_opts &= ~FEC_RACC_PRODIS;
+			/* clear all option bits first so any masked-out bits
+			 * (e.g. PRODIS) already set in the register are cleared
+			 * rather than left active by the OR below
+			 */
+			val &= ~FEC_RACC_OPTIONS;
 			val |= racc_opts;
 		} else {
 			val &= ~FEC_RACC_OPTIONS;
