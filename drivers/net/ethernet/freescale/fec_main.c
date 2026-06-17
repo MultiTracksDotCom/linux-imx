@@ -1109,11 +1109,20 @@ fec_restart(struct net_device *ndev)
 
 		/* align IP header */
 		val |= FEC_RACC_SHIFT16;
-		if (fep->csum_flags & FLAG_RX_CSUM_ENABLED)
+		if (fep->csum_flags & FLAG_RX_CSUM_ENABLED) {
 			/* set RX checksum */
-			val |= FEC_RACC_OPTIONS;
-		else
+			u32 racc_opts = FEC_RACC_OPTIONS;
+
+			/* i.MX8MM FEC incorrectly discards valid UDP frames when
+			 * PRODIS is active due to a hardware checksum errata.
+			 * Disable protocol discard for this variant only.
+			 */
+			if (fep->quirks & FEC_QUIRK_ERR_UDP_CSUM)
+				racc_opts &= ~FEC_RACC_PRODIS;
+			val |= racc_opts;
+		} else {
 			val &= ~FEC_RACC_OPTIONS;
+		}
 		writel(val, fep->hwp + FEC_RACC);
 		writel(PKT_MAXBUF_SIZE, fep->hwp + FEC_FTRL);
 	}
