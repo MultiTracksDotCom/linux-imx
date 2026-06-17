@@ -1807,9 +1807,12 @@ fec_enet_rx_queue(struct net_device *ndev, int budget, u16 queue_id)
 				 * validates certain UDP packets (FEC_QUIRK_ERR_UDP_CSUM).
 				 * Force software re-validation for UDP only.
 				 */
-				if (fep->quirks & FEC_QUIRK_ERR_UDP_CSUM) {
-					struct iphdr *iph = (struct iphdr *)skb_network_header(skb);
+				if (fep->quirks & FEC_QUIRK_ERR_UDP_CSUM &&
+				    skb->protocol == htons(ETH_P_IP)) {
+					struct iphdr _iph;
+					const struct iphdr *iph;
 
+					iph = skb_header_pointer(skb, 0, sizeof(_iph), &_iph);
 					if (iph && iph->protocol == IPPROTO_UDP)
 						skb->ip_summed = CHECKSUM_NONE;
 				}
