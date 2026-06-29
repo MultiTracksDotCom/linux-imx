@@ -4035,24 +4035,44 @@ static int fec_hwtstamp_set(struct net_device *ndev,
  *
  * Intercept the two MII register commands and service them directly against
  * fep->mii_bus so bring-up/diagnostic tooling can reach any device address
- * on the bus without side effects. All other commands fall through to the
- * standard handler. (Reworked from a patch shipped with the Audinate EVK.)
+ * on the bus without side effects. A Clause-45-encoded phy_id (MII_ADDR_C45)
+ * is split into prtad/devad and routed through the C45 bus accessors, mirroring
+ * phy_mii_ioctl() so C45 PHYs on the FEC bus remain reachable. All other
+ * commands fall through to the standard handler. (Reworked from a patch shipped
+ * with the Audinate EVK.)
  */
 static int fec_enet_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
 {
 	struct fec_enet_private *fep = netdev_priv(ndev);
 	struct mii_ioctl_data *mii = if_mii(rq);
-	int ret;
+	int prtad, devad, ret;
+	bool is_c45;
 
 	switch (cmd) {
 	case SIOCGMIIREG:
-		ret = mdiobus_read_nested(fep->mii_bus, mii->phy_id,
-					  mii->reg_num);
+		is_c45 = mdio_phy_id_is_c45(mii->phy_id);
+		if (is_c45) {
+			prtad = mdio_phy_id_prtad(mii->phy_id);
+			devad = mdio_phy_id_devad(mii->phy_id);
+			ret = mdiobus_c45_read_nested(fep->mii_bus, prtad, devad,
+						      mii->reg_num);
+		} else {
+			ret = mdiobus_read_nested(fep->mii_bus, mii->phy_id,
+						  mii->reg_num);
+		}
 		if (ret < 0)
 			return ret;
 		mii->val_out = ret;
 		return 0;
 	case SIOCSMIIREG:
+		is_c45 = mdio_phy_id_is_c45(mii->phy_id);
+		if (is_c45) {
+			prtad = mdio_phy_id_prtad(mii->phy_id);
+			devad = mdio_phy_id_devad(mii->phy_id);
+			return mdiobus_c45_write_nested(fep->mii_bus, prtad,
+							devad, mii->reg_num,
+							mii->val_in);
+		}
 		return mdiobus_write_nested(fep->mii_bus, mii->phy_id,
 					    mii->reg_num, mii->val_in);
 	default:
