@@ -154,6 +154,17 @@ static const struct fec_devinfo fec_imx6ul_info = {
 		  FEC_QUIRK_HAS_MDIO_C45,
 };
 
+static const struct fec_devinfo fec_imx8mm_info = {
+	.quirks = FEC_QUIRK_ENET_MAC | FEC_QUIRK_HAS_GBIT |
+		  FEC_QUIRK_HAS_BUFDESC_EX | FEC_QUIRK_HAS_CSUM |
+		  FEC_QUIRK_HAS_VLAN | FEC_QUIRK_HAS_AVB |
+		  FEC_QUIRK_ERR007885 | FEC_QUIRK_BUG_CAPTURE |
+		  FEC_QUIRK_HAS_RACC | FEC_QUIRK_HAS_COALESCE |
+		  FEC_QUIRK_CLEAR_SETUP_MII | FEC_QUIRK_HAS_MULTI_QUEUES |
+		  FEC_QUIRK_HAS_EEE | FEC_QUIRK_WAKEUP_FROM_INT2 |
+		  FEC_QUIRK_HAS_MDIO_C45 | FEC_QUIRK_ERR_UDP_CSUM,
+};
+
 static const struct fec_devinfo fec_imx8mq_info = {
 	.quirks = FEC_QUIRK_ENET_MAC | FEC_QUIRK_HAS_GBIT |
 		  FEC_QUIRK_HAS_BUFDESC_EX | FEC_QUIRK_HAS_CSUM |
@@ -210,6 +221,9 @@ static struct platform_device_id fec_devtype[] = {
 		.name = "imx6ul-fec",
 		.driver_data = (kernel_ulong_t)&fec_imx6ul_info,
 	}, {
+		.name = "imx8mm-fec",
+		.driver_data = (kernel_ulong_t)&fec_imx8mm_info,
+	}, {
 		.name = "imx8mq-fec",
 		.driver_data = (kernel_ulong_t)&fec_imx8mq_info,
 	}, {
@@ -232,6 +246,7 @@ enum imx_fec_type {
 	MVF600_FEC,
 	IMX6SX_FEC,
 	IMX6UL_FEC,
+	IMX8MM_FEC,
 	IMX8MQ_FEC,
 	IMX8QM_FEC,
 	S32V234_FEC,
@@ -245,6 +260,7 @@ static const struct of_device_id fec_dt_ids[] = {
 	{ .compatible = "fsl,mvf600-fec", .data = &fec_devtype[MVF600_FEC], },
 	{ .compatible = "fsl,imx6sx-fec", .data = &fec_devtype[IMX6SX_FEC], },
 	{ .compatible = "fsl,imx6ul-fec", .data = &fec_devtype[IMX6UL_FEC], },
+	{ .compatible = "fsl,imx8mm-fec", .data = &fec_devtype[IMX8MM_FEC], },
 	{ .compatible = "fsl,imx8mq-fec", .data = &fec_devtype[IMX8MQ_FEC], },
 	{ .compatible = "fsl,imx8qm-fec", .data = &fec_devtype[IMX8QM_FEC], },
 	{ .compatible = "fsl,s32v234-fec", .data = &fec_devtype[S32V234_FEC], },
@@ -1093,11 +1109,25 @@ fec_restart(struct net_device *ndev)
 
 		/* align IP header */
 		val |= FEC_RACC_SHIFT16;
-		if (fep->csum_flags & FLAG_RX_CSUM_ENABLED)
+		if (fep->csum_flags & FLAG_RX_CSUM_ENABLED) {
 			/* set RX checksum */
-			val |= FEC_RACC_OPTIONS;
-		else
+			u32 racc_opts = FEC_RACC_OPTIONS;
+
+			/* i.MX8MM FEC incorrectly discards valid UDP frames when
+			 * PRODIS is active due to a hardware checksum errata.
+			 * Disable protocol discard for this variant only.
+			 */
+			if (fep->quirks & FEC_QUIRK_ERR_UDP_CSUM)
+				racc_opts &= ~FEC_RACC_PRODIS;
+			/* clear all option bits first so any masked-out bits
+			 * (e.g. PRODIS) already set in the register are cleared
+			 * rather than left active by the OR below
+			 */
 			val &= ~FEC_RACC_OPTIONS;
+			val |= racc_opts;
+		} else {
+			val &= ~FEC_RACC_OPTIONS;
+		}
 		writel(val, fep->hwp + FEC_RACC);
 		writel(PKT_MAXBUF_SIZE, fep->hwp + FEC_FTRL);
 	}
@@ -1786,8 +1816,20 @@ fec_enet_rx_queue(struct net_device *ndev, int budget, u16 queue_id)
 		if (fep->bufdesc_ex &&
 		    (fep->csum_flags & FLAG_RX_CSUM_ENABLED)) {
 			if (!(ebdp->cbd_esc & cpu_to_fec32(FLAG_RX_CSUM_ERROR))) {
-				/* don't check it */
 				skb->ip_summed = CHECKSUM_UNNECESSARY;
+				/* i.MX8MM FEC HW checksum offload incorrectly
+				 * validates certain UDP packets (FEC_QUIRK_ERR_UDP_CSUM).
+				 * Force software re-validation for UDP only.
+				 */
+				if (fep->quirks & FEC_QUIRK_ERR_UDP_CSUM &&
+				    skb->protocol == htons(ETH_P_IP)) {
+					struct iphdr _iph;
+					const struct iphdr *iph;
+
+					iph = skb_header_pointer(skb, 0, sizeof(_iph), &_iph);
+					if (iph && iph->protocol == IPPROTO_UDP)
+						skb->ip_summed = CHECKSUM_NONE;
+				}
 			} else {
 				skb_checksum_none_assert(skb);
 			}
