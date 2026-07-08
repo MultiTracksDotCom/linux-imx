@@ -41,6 +41,7 @@ struct stm_ipc_packet {
 
 /* Parent SPI controller private structure */
 DECLARE_CRC8_TABLE(stm_crc8_table);
+static struct dentry *stm_ipc_debugfs_dir;
 
 struct stm_ipc_priv {
 	struct spi_device *spi;
@@ -238,7 +239,6 @@ static struct platform_driver stm_usb_connector_driver = {
 static int stm_ipc_probe(struct spi_device *spi)
 {
 	struct stm_ipc_priv *priv;
-	struct dentry *parent;
 	int ret;
 
 	priv = devm_kzalloc(&spi->dev, sizeof(*priv), GFP_KERNEL);
@@ -252,16 +252,14 @@ static int stm_ipc_probe(struct spi_device *spi)
 
 
 	/* Initialize DebugFS subdirectory under /sys/kernel/debug/stm_ipc/<device> */
-	parent = debugfs_create_dir("stm_ipc", NULL);
-	if (IS_ERR_OR_NULL(parent)) {
-		dev_warn(&spi->dev, "Failed to create debugfs parent directory\n");
-		priv->debugfs_root = NULL;
-	} else {
-		priv->debugfs_root = debugfs_create_dir(dev_name(&spi->dev), parent);
+	if (stm_ipc_debugfs_dir) {
+		priv->debugfs_root = debugfs_create_dir(dev_name(&spi->dev), stm_ipc_debugfs_dir);
 		if (IS_ERR_OR_NULL(priv->debugfs_root)) {
 			dev_warn(&spi->dev, "Failed to create debugfs root directory\n");
 			priv->debugfs_root = NULL;
 		}
+	} else {
+		priv->debugfs_root = NULL;
 	}
 
 	/* Populate subnodes as platform devices (this probes the connector sub-drivers) */
@@ -319,22 +317,32 @@ static int __init stm_ipc_init(void)
 	/* Setup CRC8 lookup table (polynomial 0x07) once */
 	crc8_populate_msb(stm_crc8_table, STM_IPC_CRC8_POLYNOMIAL);
 
+	/* Setup global debugfs parent directory */
+	stm_ipc_debugfs_dir = debugfs_create_dir("stm_ipc", NULL);
+	if (IS_ERR_OR_NULL(stm_ipc_debugfs_dir))
+		stm_ipc_debugfs_dir = NULL;
+
 	ret = spi_register_driver(&stm_ipc_driver);
 	if (ret)
-		return ret;
+		goto err_debugfs;
 
 	ret = platform_driver_register(&stm_usb_connector_driver);
 	if (ret) {
 		spi_unregister_driver(&stm_ipc_driver);
-		return ret;
+		goto err_debugfs;
 	}
 
 	return 0;
+
+err_debugfs:
+	debugfs_remove_recursive(stm_ipc_debugfs_dir);
+	return ret;
 }
 static void __exit stm_ipc_exit(void)
 {
 	spi_unregister_driver(&stm_ipc_driver);
 	platform_driver_unregister(&stm_usb_connector_driver);
+	debugfs_remove_recursive(stm_ipc_debugfs_dir);
 }
 
 module_init(stm_ipc_init);
