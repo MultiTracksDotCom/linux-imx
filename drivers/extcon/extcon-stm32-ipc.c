@@ -249,8 +249,7 @@ static int stm_ipc_probe(struct spi_device *spi)
 	mutex_init(&priv->lock);
 	spi_set_drvdata(spi, priv);
 
-	/* Setup CRC8 lookup table (polynomial 0x07) */
-	crc8_populate_msb(stm_crc8_table, STM_IPC_CRC8_POLYNOMIAL);
+
 
 	/* Initialize DebugFS subdirectory under /sys/kernel/debug/stm_ipc/<device> */
 	parent = debugfs_create_dir("stm_ipc", NULL);
@@ -316,6 +315,9 @@ static struct spi_driver stm_ipc_driver = {
 static int __init stm_ipc_init(void)
 {
 	int ret;
+
+	/* Setup CRC8 lookup table (polynomial 0x07) once */
+	crc8_populate_msb(stm_crc8_table, STM_IPC_CRC8_POLYNOMIAL);
 
 	ret = spi_register_driver(&stm_ipc_driver);
 	if (ret)
