@@ -51,7 +51,7 @@ struct stm_ipc_priv {
 /* Child connector platform device private structure */
 struct stm_connector_priv {
 	struct extcon_dev *edev;
-	u32 port_id;
+	u8 port_id;
 };
 
 static const unsigned int stm_usb_cable[] = {
@@ -179,17 +179,23 @@ static int stm_usb_connector_probe(struct platform_device *pdev)
 	struct stm_connector_priv *priv;
 	struct stm_ipc_priv *parent_priv;
 	char name[32];
+	u32 val;
 	int ret;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
-	ret = of_property_read_u32(dev->of_node, "port-id", &priv->port_id);
+	ret = of_property_read_u32(dev->of_node, "port-id", &val);
 	if (ret) {
 		dev_err(dev, "Missing 'port-id' property\n");
 		return ret;
 	}
+	if (val > 255) {
+		dev_err(dev, "Invalid 'port-id' value: %u (must be <= 255)\n", val);
+		return -EINVAL;
+	}
+	priv->port_id = (u8)val;
 
 	priv->edev = devm_extcon_dev_allocate(dev, stm_usb_cable);
 	if (IS_ERR(priv->edev))
