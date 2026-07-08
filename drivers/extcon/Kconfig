@@ -178,7 +178,7 @@ config EXTCON_USB_GPIO
 
 config EXTCON_STM32_SPI_IPC
 	tristate "STM32 SPI IPC and Virtual Extcon support"
-	depends on SPI
+	depends on SPI && OF
 	select CRC8
 	help
 	  Say Y here to enable the STM32 SPI IPC and Virtual Extcon driver,
