@@ -80,7 +80,7 @@ static void stm_ipc_update_state(struct extcon_dev *edev, u8 state)
 		/* Fallback to safe disconnected state on protocol error */
 		extcon_set_state_sync(edev, EXTCON_USB, false);
 		extcon_set_state_sync(edev, EXTCON_USB_HOST, false);
-		pr_warn_ratelimited("stm-spi-ipc: Invalid USB connector state: %u\n", state);
+		dev_warn_ratelimited(&edev->dev, "Invalid USB connector state: %u\n", state);
 		break;
 	}
 }
