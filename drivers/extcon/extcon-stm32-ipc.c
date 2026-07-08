@@ -177,6 +177,8 @@ static int stm_usb_connector_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct stm_connector_priv *priv;
+	struct stm_ipc_priv *parent_priv;
+	char name[32];
 	int ret;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
@@ -202,9 +204,8 @@ static int stm_usb_connector_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, priv);
 
 	/* Set up DebugFS for this virtual connector for runtime simulation */
-	struct stm_ipc_priv *parent_priv = dev_get_drvdata(dev->parent);
+	parent_priv = dev_get_drvdata(dev->parent);
 	if (parent_priv && parent_priv->debugfs_root) {
-		char name[32];
 		snprintf(name, sizeof(name), "usb%d_sim", priv->port_id + 1);
 		debugfs_create_file(name, 0200, parent_priv->debugfs_root, priv, &stm_ipc_sim_fops);
 	}
@@ -231,6 +232,7 @@ static struct platform_driver stm_usb_connector_driver = {
 static int stm_ipc_probe(struct spi_device *spi)
 {
 	struct stm_ipc_priv *priv;
+	struct dentry *parent;
 	int ret;
 
 	priv = devm_kzalloc(&spi->dev, sizeof(*priv), GFP_KERNEL);
@@ -240,8 +242,6 @@ static int stm_ipc_probe(struct spi_device *spi)
 	priv->spi = spi;
 	mutex_init(&priv->lock);
 	spi_set_drvdata(spi, priv);
-
-	struct dentry *parent;
 
 	/* Setup CRC8 lookup table (polynomial 0x07) */
 	crc8_populate_msb(stm_crc8_table, STM_IPC_CRC8_POLYNOMIAL);
