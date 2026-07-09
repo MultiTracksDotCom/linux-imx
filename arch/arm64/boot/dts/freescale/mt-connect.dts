@@ -480,7 +480,12 @@
 	status = "okay";
 };
 
-/* SAI2 TXFS/TXC share the Dante clock bus with SAI1 and SAI3; no data lines used. */
+/*
+ * SAI2 TXFS/TXC share the Dante clock bus with SAI1 and SAI3; no data lines
+ * are used. fsl,dataline must be present even with zero lanes — without it
+ * fsl_sai_read_dlcfg calls devm_kzalloc(0) which returns ZERO_SIZE_PTR and
+ * immediately crashes on the first cfg[0] write.
+ */
 &sai2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai2>;
@@ -488,6 +493,7 @@
 	<&dante_osc_mclk>,
 	<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
+	fsl,dataline = <1 0x00 0x00>; /* no RX or TX data lines */
 	fsl,txs-rxs;
 	status = "okay";
 };
