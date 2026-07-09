@@ -364,13 +364,13 @@ static int __init stm_ipc_init(void)
 	if (IS_ERR_OR_NULL(stm_ipc_debugfs_dir))
 		stm_ipc_debugfs_dir = NULL;
 
-	ret = spi_register_driver(&stm_ipc_driver);
+	ret = platform_driver_register(&stm_usb_connector_driver);
 	if (ret)
 		goto err_debugfs;
 
-	ret = platform_driver_register(&stm_usb_connector_driver);
+	ret = spi_register_driver(&stm_ipc_driver);
 	if (ret) {
-		spi_unregister_driver(&stm_ipc_driver);
+		platform_driver_unregister(&stm_usb_connector_driver);
 		goto err_debugfs;
 	}
 
