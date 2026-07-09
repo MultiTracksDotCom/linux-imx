@@ -482,7 +482,7 @@
 
 /*
  * SAI2 TXFS/TXC share the Dante clock bus with SAI1 and SAI3; no data lines
- * are used. fsl,dataline must be present even with zero lanes — without it
+ * are used. fsl,dataline must be present even with zero lanes -- without it
  * fsl_sai_read_dlcfg calls devm_kzalloc(0) which returns ZERO_SIZE_PTR and
  * immediately crashes on the first cfg[0] write.
  */
