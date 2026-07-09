@@ -199,6 +199,13 @@ static int stm_ipc_sim_write(void *data, u64 val)
 }
 DEFINE_DEBUGFS_ATTRIBUTE(stm_ipc_sim_fops, NULL, stm_ipc_sim_write, "%llu\n");
 
+static void stm_ipc_debugfs_cleanup(void *data)
+{
+	struct dentry *dentry = data;
+
+	debugfs_remove(dentry);
+}
+
 /* Child Connector Platform Device Probe */
 static int stm_usb_connector_probe(struct platform_device *pdev)
 {
@@ -239,8 +246,17 @@ static int stm_usb_connector_probe(struct platform_device *pdev)
 	/* Set up DebugFS for this virtual connector for runtime simulation */
 	parent_priv = dev_get_drvdata(dev->parent);
 	if (parent_priv && parent_priv->debugfs_root) {
+		struct dentry *sim_file;
+
 		snprintf(name, sizeof(name), "usb%d_sim", priv->port_id + 1);
-		debugfs_create_file(name, 0200, parent_priv->debugfs_root, priv, &stm_ipc_sim_fops);
+		sim_file = debugfs_create_file(name, 0200, parent_priv->debugfs_root, priv, &stm_ipc_sim_fops);
+		if (!IS_ERR_OR_NULL(sim_file)) {
+			ret = devm_add_action_or_reset(dev, stm_ipc_debugfs_cleanup, sim_file);
+			if (ret) {
+				dev_err(dev, "Failed to register debugfs cleanup action: %d\n", ret);
+				return ret;
+			}
+		}
 	}
 
 	dev_info(dev, "Registered virtual USB connector on Port %d\n", priv->port_id);
