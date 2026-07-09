@@ -145,7 +145,7 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 	spi_message_add_tail(&t, &m);
 	ret = spi_sync(priv->spi, &m);
 	if (ret < 0) {
-		dev_err(&priv->spi->dev, "SPI sync transfer failed: %d\n", ret);
+		dev_err_ratelimited(&priv->spi->dev, "SPI sync transfer failed: %d\n", ret);
 		goto out;
 	}
 
