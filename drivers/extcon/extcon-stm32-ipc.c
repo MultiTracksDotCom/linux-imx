@@ -64,25 +64,48 @@ static const unsigned int stm_usb_cable[] = {
 /* Helper to update extcon state based on STM32 reporting */
 static void stm_ipc_update_state(struct extcon_dev *edev, u8 state)
 {
+	int usb_state = extcon_get_state(edev, EXTCON_USB);
+	int host_state = extcon_get_state(edev, EXTCON_USB_HOST);
+	bool want_usb = false;
+	bool want_host = false;
+
+	if (usb_state < 0 || host_state < 0) {
+		dev_err_ratelimited(&edev->dev, "Failed to get current extcon state\n");
+		return;
+	}
+
 	switch (state) {
 	case STM_IPC_USB_STATE_DISCONNECTED:
-		extcon_set_state_sync(edev, EXTCON_USB, false);
-		extcon_set_state_sync(edev, EXTCON_USB_HOST, false);
+		want_usb = false;
+		want_host = false;
 		break;
 	case STM_IPC_USB_STATE_PERIPHERAL:
-		extcon_set_state_sync(edev, EXTCON_USB_HOST, false);
-		extcon_set_state_sync(edev, EXTCON_USB, true);
+		want_usb = true;
+		want_host = false;
 		break;
 	case STM_IPC_USB_STATE_HOST:
-		extcon_set_state_sync(edev, EXTCON_USB, false);
-		extcon_set_state_sync(edev, EXTCON_USB_HOST, true);
+		want_usb = false;
+		want_host = true;
 		break;
 	default:
 		/* Fallback to safe disconnected state on protocol error */
-		extcon_set_state_sync(edev, EXTCON_USB, false);
-		extcon_set_state_sync(edev, EXTCON_USB_HOST, false);
+		want_usb = false;
+		want_host = false;
 		dev_warn_ratelimited(&edev->dev, "Invalid USB connector state: %u\n", state);
 		break;
+	}
+
+	/* Only update states if they have actually changed, clearing opposite first */
+	if (want_usb != usb_state || want_host != host_state) {
+		if (!want_usb && usb_state)
+			extcon_set_state_sync(edev, EXTCON_USB, false);
+		if (!want_host && host_state)
+			extcon_set_state_sync(edev, EXTCON_USB_HOST, false);
+
+		if (want_usb && !usb_state)
+			extcon_set_state_sync(edev, EXTCON_USB, true);
+		if (want_host && !host_state)
+			extcon_set_state_sync(edev, EXTCON_USB_HOST, true);
 	}
 }
 
