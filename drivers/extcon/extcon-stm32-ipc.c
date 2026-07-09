@@ -175,7 +175,10 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 		u8 port_info[2] = { rx_buf.port, rx_buf.state };
 
 		dev_dbg(&priv->spi->dev, "USB Event from STM32 on Port %d: State %d\n", rx_buf.port, rx_buf.state);
-		device_for_each_child(&priv->spi->dev, port_info, match_and_update_state);
+		ret = device_for_each_child(&priv->spi->dev, port_info, match_and_update_state);
+		if (ret == 0) {
+			dev_warn_ratelimited(&priv->spi->dev, "No matching USB connector found for Port %d\n", rx_buf.port);
+		}
 	}
 
 out:
