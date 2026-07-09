@@ -51,6 +51,7 @@ struct stm_ipc_priv {
 
 /* Child connector platform device private structure */
 struct stm_connector_priv {
+	struct device *dev;
 	struct extcon_dev *edev;
 	u8 port_id;
 };
@@ -62,7 +63,7 @@ static const unsigned int stm_usb_cable[] = {
 };
 
 /* Helper to update extcon state based on STM32 reporting */
-static void stm_ipc_update_state(struct extcon_dev *edev, u8 state)
+static void stm_ipc_update_state(struct device *dev, struct extcon_dev *edev, u8 state)
 {
 	int usb_state = extcon_get_state(edev, EXTCON_USB);
 	int host_state = extcon_get_state(edev, EXTCON_USB_HOST);
@@ -70,7 +71,7 @@ static void stm_ipc_update_state(struct extcon_dev *edev, u8 state)
 	bool want_host = false;
 
 	if (usb_state < 0 || host_state < 0) {
-		dev_err_ratelimited(&edev->dev, "Failed to get current extcon state\n");
+		dev_err_ratelimited(dev, "Failed to get current extcon state\n");
 		return;
 	}
 
@@ -91,7 +92,7 @@ static void stm_ipc_update_state(struct extcon_dev *edev, u8 state)
 		/* Fallback to safe disconnected state on protocol error */
 		want_usb = false;
 		want_host = false;
-		dev_warn_ratelimited(&edev->dev, "Invalid USB connector state: %u\n", state);
+		dev_warn_ratelimited(dev, "Invalid USB connector state: %u\n", state);
 		break;
 	}
 
@@ -118,7 +119,7 @@ static int match_and_update_state(struct device *dev, void *data)
 	u8 state = port_info[1];
 
 	if (priv && priv->port_id == port_id) {
-		stm_ipc_update_state(priv->edev, state);
+		stm_ipc_update_state(dev, priv->edev, state);
 		return 1; /* Found and processed, stop iteration */
 	}
 	return 0;
@@ -194,7 +195,7 @@ static int stm_ipc_sim_write(void *data, u64 val)
 	if (val > STM_IPC_USB_STATE_HOST)
 		return -EINVAL;
 
-	stm_ipc_update_state(priv->edev, (u8)val);
+	stm_ipc_update_state(priv->dev, priv->edev, (u8)val);
 	return 0;
 }
 DEFINE_DEBUGFS_ATTRIBUTE(stm_ipc_sim_fops, NULL, stm_ipc_sim_write, "%llu\n");
@@ -219,6 +220,8 @@ static int stm_usb_connector_probe(struct platform_device *pdev)
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
+
+	priv->dev = dev;
 
 	ret = of_property_read_u32(dev->of_node, "port-id", &val);
 	if (ret) {
