@@ -534,7 +534,14 @@
 };
 
 &usbotg1 {
-	extcon = <&usb1_connector>;
+	/*
+	 * ChipIdea reads extcon phandle 0 as the VBUS (EXTCON_USB) source and
+	 * phandle 1 as the ID (EXTCON_USB_HOST) source. The connector provides
+	 * both cable types, so point both indices at it; otherwise the ID/host
+	 * notifier is never registered by ci_extcon_register() and host-role
+	 * events are dropped.
+	 */
+	extcon = <&usb1_connector>, <&usb1_connector>;
 	hnp-disable;
 	srp-disable;
 	adp-disable;
@@ -548,7 +555,8 @@
 };
 
 &usbotg2 {
-	extcon = <&usb2_connector>;
+	/* Both extcon indices point at the connector; see &usbotg1. */
+	extcon = <&usb2_connector>, <&usb2_connector>;
 	hnp-disable;
 	srp-disable;
 	adp-disable;
