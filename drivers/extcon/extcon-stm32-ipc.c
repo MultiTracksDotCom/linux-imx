@@ -56,6 +56,13 @@ struct stm_connector_priv {
 	u8 port_id;
 };
 
+/* Payload handed to the device_for_each_child() match callback */
+struct stm_ipc_port_event {
+	u8 port;
+	u8 state;
+	bool handled;
+};
+
 static const unsigned int stm_usb_cable[] = {
 	EXTCON_USB,
 	EXTCON_USB_HOST,
@@ -114,14 +121,18 @@ static void stm_ipc_update_state(struct device *dev, struct extcon_dev *edev, u8
 static int match_and_update_state(struct device *dev, void *data)
 {
 	struct stm_connector_priv *priv = dev_get_drvdata(dev);
-	u8 *port_info = data;
-	u8 port_id = port_info[0];
-	u8 state = port_info[1];
+	struct stm_ipc_port_event *event = data;
 
-	if (priv && priv->port_id == port_id) {
-		stm_ipc_update_state(dev, priv->edev, state);
-		return 1; /* Found and processed, stop iteration */
+	if (priv && priv->port_id == event->port) {
+		stm_ipc_update_state(dev, priv->edev, event->state);
+		event->handled = true;
 	}
+
+	/*
+	 * Always return 0 so the return value of device_for_each_child() stays
+	 * reserved for genuine errors; "was a matching connector found" is
+	 * reported through event->handled instead.
+	 */
 	return 0;
 }
 
@@ -173,13 +184,19 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 
 	/* Process USB event */
 	if (rx_buf.type == MSG_TYPE_USB_EVENT) {
-		u8 port_info[2] = { rx_buf.port, rx_buf.state };
+		struct stm_ipc_port_event event = {
+			.port  = rx_buf.port,
+			.state = rx_buf.state,
+		};
 
 		dev_dbg(&priv->spi->dev, "USB Event from STM32 on Port %d: State %d\n", rx_buf.port, rx_buf.state);
-		ret = device_for_each_child(&priv->spi->dev, port_info, match_and_update_state);
-		if (ret == 0) {
-			dev_warn_ratelimited(&priv->spi->dev, "No matching USB connector found for Port %d\n", rx_buf.port);
-		}
+		ret = device_for_each_child(&priv->spi->dev, &event, match_and_update_state);
+		if (ret < 0)
+			dev_warn_ratelimited(&priv->spi->dev, "Failed to dispatch event for Port %d: %d\n",
+					     rx_buf.port, ret);
+		else if (!event.handled)
+			dev_warn_ratelimited(&priv->spi->dev, "No matching USB connector found for Port %d\n",
+					     rx_buf.port);
 	}
 
 out:
