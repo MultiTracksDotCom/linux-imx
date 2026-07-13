@@ -204,7 +204,7 @@ static void stm_ipc_debugfs_cleanup(void *data)
 {
 	struct dentry *dentry = data;
 
-	debugfs_remove(dentry);
+	debugfs_remove_recursive(dentry);
 }
 
 /* Child Connector Platform Device Probe */
@@ -294,14 +294,28 @@ static int stm_ipc_probe(struct spi_device *spi)
 	mutex_init(&priv->lock);
 	spi_set_drvdata(spi, priv);
 
-
-
 	/* Initialize DebugFS subdirectory under /sys/kernel/debug/stm_ipc/<device> */
 	if (stm_ipc_debugfs_dir) {
 		priv->debugfs_root = debugfs_create_dir(dev_name(&spi->dev), stm_ipc_debugfs_dir);
 		if (IS_ERR_OR_NULL(priv->debugfs_root)) {
 			dev_warn(&spi->dev, "Failed to create debugfs root directory\n");
 			priv->debugfs_root = NULL;
+		} else {
+			/*
+			 * Tear the directory down via devres. Registering the
+			 * action *before* devm_of_platform_populate() means it
+			 * runs *after* the child connectors are depopulated (LIFO
+			 * devres order), so each connector removes its own sim
+			 * file first and this only reaps the now-empty directory.
+			 * That avoids the double-free that a direct
+			 * debugfs_remove_recursive() here would cause against the
+			 * connectors' per-file cleanup.
+			 */
+			ret = devm_add_action_or_reset(&spi->dev,
+						       stm_ipc_debugfs_cleanup,
+						       priv->debugfs_root);
+			if (ret)
+				return ret;
 		}
 	} else {
 		priv->debugfs_root = NULL;
@@ -311,7 +325,7 @@ static int stm_ipc_probe(struct spi_device *spi)
 	ret = devm_of_platform_populate(&spi->dev);
 	if (ret) {
 		dev_err(&spi->dev, "Failed to populate child connectors: %d\n", ret);
-		goto err_debugfs;
+		return ret;
 	}
 
 	/* Request Attention Pin Interrupt */
@@ -322,22 +336,12 @@ static int stm_ipc_probe(struct spi_device *spi)
 						DRIVER_NAME, priv);
 		if (ret) {
 			dev_err(&spi->dev, "Failed to request threaded IRQ: %d\n", ret);
-			goto err_debugfs;
+			return ret;
 		}
 	}
 
 	dev_info(&spi->dev, "STM32 SPI IPC Core initialized\n");
 	return 0;
-
-err_debugfs:
-	debugfs_remove_recursive(priv->debugfs_root);
-	return ret;
-}
-
-static void stm_ipc_remove(struct spi_device *spi)
-{
-	struct stm_ipc_priv *priv = spi_get_drvdata(spi);
-	debugfs_remove_recursive(priv->debugfs_root);
 }
 
 static const struct of_device_id stm_ipc_of_match[] = {
@@ -352,7 +356,6 @@ static struct spi_driver stm_ipc_driver = {
 		.of_match_table = stm_ipc_of_match,
 	},
 	.probe = stm_ipc_probe,
-	.remove = stm_ipc_remove,
 };
 
 static int __init stm_ipc_init(void)
