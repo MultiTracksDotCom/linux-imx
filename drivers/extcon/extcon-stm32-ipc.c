@@ -345,11 +345,15 @@ static int stm_ipc_probe(struct spi_device *spi)
 		return ret;
 	}
 
-	/* Request Attention Pin Interrupt */
+	/*
+	 * Request the attention line interrupt. The trigger type is taken from
+	 * the device tree ("interrupts"), so only IRQF_ONESHOT is requested here
+	 * to keep the line masked until the threaded handler completes.
+	 */
 	if (spi->irq > 0) {
 		ret = devm_request_threaded_irq(&spi->dev, spi->irq, NULL,
 						stm_ipc_threaded_irq,
-						IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+						IRQF_ONESHOT,
 						DRIVER_NAME, priv);
 		if (ret) {
 			dev_err(&spi->dev, "Failed to request threaded IRQ: %d\n", ret);
