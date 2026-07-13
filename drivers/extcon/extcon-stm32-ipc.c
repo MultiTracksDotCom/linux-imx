@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * drivers/extcon/extcon-stm32-ipc.c - STM32 SPI IPC and Virtual Extcon Driver
+ * STM32 SPI IPC and virtual extcon driver
  *
  * Copyright (C) 2026 MultiTracks
  */
@@ -39,13 +39,14 @@ struct stm_ipc_packet {
 	u8 crc;
 } __packed;
 
-/* Parent SPI controller private structure */
+/* Module-wide CRC-8 table and debugfs parent, shared by all instances */
 DECLARE_CRC8_TABLE(stm_crc8_table);
 static struct dentry *stm_ipc_debugfs_dir;
 
+/* Parent SPI controller private structure */
 struct stm_ipc_priv {
 	struct spi_device *spi;
-	struct mutex lock;
+	struct mutex lock; /* serialises SPI packet transfers */
 	struct dentry *debugfs_root;
 };
 
@@ -168,7 +169,8 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 	}
 
 	/* Validate packet CRC */
-	calc_crc = crc8(stm_crc8_table, (const u8 *)&rx_buf, offsetof(struct stm_ipc_packet, crc), 0);
+	calc_crc = crc8(stm_crc8_table, (const u8 *)&rx_buf,
+			offsetof(struct stm_ipc_packet, crc), 0);
 	if (calc_crc != rx_buf.crc) {
 		dev_warn_ratelimited(&priv->spi->dev, "CRC mismatch: read 0x%02x, calculated 0x%02x\n",
 				     rx_buf.crc, calc_crc);
@@ -189,7 +191,8 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 			.state = rx_buf.state,
 		};
 
-		dev_dbg(&priv->spi->dev, "USB Event from STM32 on Port %d: State %d\n", rx_buf.port, rx_buf.state);
+		dev_dbg(&priv->spi->dev, "USB Event from STM32 on Port %d: State %d\n",
+			rx_buf.port, rx_buf.state);
 		ret = device_for_each_child(&priv->spi->dev, &event, match_and_update_state);
 		if (ret < 0)
 			dev_warn_ratelimited(&priv->spi->dev, "Failed to dispatch event for Port %d: %d\n",
@@ -269,11 +272,13 @@ static int stm_usb_connector_probe(struct platform_device *pdev)
 		struct dentry *sim_file;
 
 		snprintf(name, sizeof(name), "usb%d_sim", priv->port_id + 1);
-		sim_file = debugfs_create_file(name, 0200, parent_priv->debugfs_root, priv, &stm_ipc_sim_fops);
+		sim_file = debugfs_create_file(name, 0200, parent_priv->debugfs_root,
+					       priv, &stm_ipc_sim_fops);
 		if (!IS_ERR_OR_NULL(sim_file)) {
 			ret = devm_add_action_or_reset(dev, stm_ipc_debugfs_cleanup, sim_file);
 			if (ret) {
-				dev_err(dev, "Failed to register debugfs cleanup action: %d\n", ret);
+				dev_err(dev, "Failed to register debugfs cleanup action: %d\n",
+					ret);
 				return ret;
 			}
 		}
@@ -412,6 +417,7 @@ err_debugfs:
 	debugfs_remove_recursive(stm_ipc_debugfs_dir);
 	return ret;
 }
+
 static void __exit stm_ipc_exit(void)
 {
 	spi_unregister_driver(&stm_ipc_driver);
