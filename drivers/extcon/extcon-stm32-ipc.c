@@ -346,19 +346,24 @@ static int stm_ipc_probe(struct spi_device *spi)
 	}
 
 	/*
-	 * Request the attention line interrupt. The trigger type is taken from
-	 * the device tree ("interrupts"), so only IRQF_ONESHOT is requested here
-	 * to keep the line masked until the threaded handler completes.
+	 * The attention line is mandatory: without it no STM32 events are ever
+	 * read and the IPC path is silently dead, so refuse to probe rather than
+	 * come up looking healthy. The trigger type is taken from the device tree
+	 * ("interrupts"); only IRQF_ONESHOT is requested here to keep the line
+	 * masked until the threaded handler completes.
 	 */
-	if (spi->irq > 0) {
-		ret = devm_request_threaded_irq(&spi->dev, spi->irq, NULL,
-						stm_ipc_threaded_irq,
-						IRQF_ONESHOT,
-						DRIVER_NAME, priv);
-		if (ret) {
-			dev_err(&spi->dev, "Failed to request threaded IRQ: %d\n", ret);
-			return ret;
-		}
+	if (spi->irq <= 0) {
+		dev_err(&spi->dev, "Missing attention interrupt\n");
+		return spi->irq < 0 ? spi->irq : -ENXIO;
+	}
+
+	ret = devm_request_threaded_irq(&spi->dev, spi->irq, NULL,
+					stm_ipc_threaded_irq,
+					IRQF_ONESHOT,
+					DRIVER_NAME, priv);
+	if (ret) {
+		dev_err(&spi->dev, "Failed to request threaded IRQ: %d\n", ret);
+		return ret;
 	}
 
 	dev_info(&spi->dev, "STM32 SPI IPC Core initialized\n");
