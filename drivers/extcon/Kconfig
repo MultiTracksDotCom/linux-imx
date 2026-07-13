@@ -176,6 +176,15 @@ config EXTCON_USB_GPIO
 	  Say Y here to enable GPIO based USB cable detection extcon support.
 	  Used typically if GPIO is used for USB ID pin detection.
 
+config EXTCON_STM32_SPI_IPC
+	tristate "STM32 SPI IPC and Virtual Extcon support"
+	depends on SPI && OF
+	select CRC8
+	help
+	  Say Y here to enable the STM32 SPI IPC and Virtual Extcon driver,
+	  which handles USB connection/cable event notifications reported
+	  by an external STM32 co-processor over SPI.
+
 config EXTCON_USBC_CROS_EC
 	tristate "ChromeOS Embedded Controller EXTCON support"
 	depends on CROS_EC

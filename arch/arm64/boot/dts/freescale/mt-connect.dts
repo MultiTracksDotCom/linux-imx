@@ -495,15 +495,29 @@
 };
 
 &ecspi2 {
-	status = "okay";
+	#address-cells = <1>;
+	#size-cells = <0>;
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_ecspi2>;
+	pinctrl-0 = <&pinctrl_ecspi2 &pinctrl_stm_ipc>;
 	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
+	status = "okay";
 
-	spidev1: spi@0 {
+	stm_ipc: stm32-ipc@0 {
+		compatible = "multitracks,stm32-spi-ipc";
 		reg = <0>;
-		compatible = "rohm,dh2228fv";
-		spi-max-frequency = <500000>;
+		spi-max-frequency = <10000000>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <29 IRQ_TYPE_EDGE_FALLING>;
+
+		usb1_connector: connector-usb1 {
+			compatible = "multitracks,stm32-usb-connector";
+			port-id = <0>;
+		};
+
+		usb2_connector: connector-usb2 {
+			compatible = "multitracks,stm32-usb-connector";
+			port-id = <1>;
+		};
 	};
 };
 
@@ -520,6 +534,14 @@
 };
 
 &usbotg1 {
+	/*
+	 * ChipIdea reads extcon phandle 0 as the VBUS (EXTCON_USB) source and
+	 * phandle 1 as the ID (EXTCON_USB_HOST) source. The connector provides
+	 * both cable types, so point both indices at it; otherwise the ID/host
+	 * notifier is never registered by ci_extcon_register() and host-role
+	 * events are dropped.
+	 */
+	extcon = <&usb1_connector>, <&usb1_connector>;
 	hnp-disable;
 	srp-disable;
 	adp-disable;
@@ -533,6 +555,8 @@
 };
 
 &usbotg2 {
+	/* Both extcon indices point at the connector; see &usbotg1. */
+	extcon = <&usb2_connector>, <&usb2_connector>;
 	hnp-disable;
 	srp-disable;
 	adp-disable;
@@ -710,9 +734,9 @@
 		>;
 	};
 
-	pinctrl_typec1: typec1grp {
+	pinctrl_stm_ipc: stmipcgrp {
 		fsl,pins = <
-		MX8MM_IOMUXC_SD1_STROBE_GPIO2_IO11			0x159
+		MX8MM_IOMUXC_SAI3_RXC_GPIO4_IO29			0x82 /* STM IPC attention (ECSPI2 INT) */
 		>;
 	};
 
@@ -735,9 +759,7 @@
 		MX8MM_IOMUXC_ECSPI2_MISO_ECSPI2_MISO		0x82
 		MX8MM_IOMUXC_ECSPI2_MOSI_ECSPI2_MOSI		0x82
 		MX8MM_IOMUXC_ECSPI2_SCLK_ECSPI2_SCLK		0x82
-		MX8MM_IOMUXC_ECSPI2_SS0_ECSPI2_SS0			0x82
-		MX8MM_IOMUXC_ECSPI2_SS0_GPIO5_IO13			0x140 /* ECSPI2 NSS */
-		MX8MM_IOMUXC_SAI3_RXC_GPIO4_IO29			0x82 /* ECSPI2 INT */
+		MX8MM_IOMUXC_ECSPI2_SS0_GPIO5_IO13			0x140 /* ECSPI2 NSS (cs-gpios) */
 		>;
 	};
 
