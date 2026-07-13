@@ -157,15 +157,18 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 	spi_message_init(&m);
 	spi_message_add_tail(&t, &m);
 	ret = spi_sync(priv->spi, &m);
+
+	mutex_unlock(&priv->lock);
+
 	if (ret < 0) {
 		dev_err_ratelimited(&priv->spi->dev, "SPI sync transfer failed: %d\n", ret);
-		goto out;
+		return IRQ_HANDLED;
 	}
 
 	/* Validate magic byte */
 	if (rx_buf.magic != STM_IPC_MSG_MAGIC) {
 		dev_warn_ratelimited(&priv->spi->dev, "Invalid magic byte: 0x%02x\n", rx_buf.magic);
-		goto out;
+		return IRQ_HANDLED;
 	}
 
 	/* Validate packet CRC */
@@ -174,14 +177,14 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 	if (calc_crc != rx_buf.crc) {
 		dev_warn_ratelimited(&priv->spi->dev, "CRC mismatch: read 0x%02x, calculated 0x%02x\n",
 				     rx_buf.crc, calc_crc);
-		goto out;
+		return IRQ_HANDLED;
 	}
 
 	/* Validate packet payload length for USB events */
 	if (rx_buf.type == MSG_TYPE_USB_EVENT && rx_buf.length != STM_IPC_MSG_LEN_USB_EVENT) {
 		dev_warn_ratelimited(&priv->spi->dev, "Invalid packet length: %u (expected %d)\n",
 				     rx_buf.length, STM_IPC_MSG_LEN_USB_EVENT);
-		goto out;
+		return IRQ_HANDLED;
 	}
 
 	/* Process USB event */
@@ -202,8 +205,6 @@ static irqreturn_t stm_ipc_threaded_irq(int irq, void *dev_id)
 					     rx_buf.port);
 	}
 
-out:
-	mutex_unlock(&priv->lock);
 	return IRQ_HANDLED;
 }
 
