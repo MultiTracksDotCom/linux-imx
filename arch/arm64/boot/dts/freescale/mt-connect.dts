@@ -439,8 +439,6 @@
 };
 
 &gpio5 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpio5>;
 	gpio-line-names = "DPM_HP_DAC_BCLK", "DPM_HP_DAC_SD", "DPM_HP_DAC_MCLK", "", "", "PWM_MEMBRANE", "", "",
 	"", "", "SPI2_SCK", "SPI2_MOSI", "SPI2_MISO", "SPI2_NSS", "", "",
 	"DPM_I2C2_SCL", "DPM_I2C2_SDA", "", "", "DPM_I2C4_SCL", "DPM_I2C4_SDA", "", "",
@@ -466,7 +464,6 @@
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 	fsl,dataline = <1 0x00 0x01>; /*I2S mode enabled, 0 RX lines, 1 TX lines*/
 	fsl,txs-rxs;
-	fsl,sai-mclk-direction-output;
 	status = "okay";
 };
 
@@ -480,7 +477,24 @@
 	fsl,dataline = <1 0x0F 0x0F>; /*I2S mode enabled, 4 RX lines, 4 TX lines*/
 	fsl,txs-rxs;
 	fsl,sai-multi-lane;
-	fsl,sai-mclk-direction-output;
+	status = "okay";
+};
+
+/*
+ * SAI2 TXFS/TXC share the Dante clock bus with SAI1 and SAI3; no data lines
+ * are used. fsl,dataline must be present even with zero lanes -- without it
+ * fsl_sai_read_dlcfg calls devm_kzalloc(0) which returns ZERO_SIZE_PTR and
+ * immediately crashes on the first cfg[0] write.
+ */
+&sai2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai2>;
+	clocks = <&clk IMX8MM_CLK_SAI2_IPG>, <&clk IMX8MM_CLK_DUMMY>,
+	<&dante_osc_mclk>,
+	<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_CLK_DUMMY>;
+	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
+	fsl,dataline = <1 0x00 0x00>; /* no RX or TX data lines */
+	fsl,txs-rxs;
 	status = "okay";
 };
 
@@ -688,12 +702,19 @@
 		>;
 	};
 
+	pinctrl_sai2: sai2grp {
+		fsl,pins = <
+		MX8MM_IOMUXC_SAI2_TXFS_SAI2_TX_SYNC		0x80 /* Dante LRCLK shared bus */
+		MX8MM_IOMUXC_SAI2_TXC_SAI2_TX_BCLK		0x80 /* Dante BCLK shared bus */
+		>;
+	};
 
 	pinctrl_sai3: sai3grp {
 		fsl,pins = <
 		MX8MM_IOMUXC_SAI3_TXC_SAI3_TX_BCLK		0x80 /* DANTE_OSC_SCLK */
 		MX8MM_IOMUXC_SAI3_TXD_SAI3_TX_DATA0		0xd6 /* DPM_HP_DAC_SD */
 		MX8MM_IOMUXC_SAI3_TXFS_SAI3_TX_SYNC		0x80 /* DPM_HP_DAC_LRCK */
+		MX8MM_IOMUXC_SAI3_MCLK_SAI3_MCLK		0x80 /* DANTE_OSC_MCLK input */
 		>;
 	};
 
@@ -701,12 +722,6 @@
 		fsl,pins = <
 		MX8MM_IOMUXC_SAI3_RXD_GPIO4_IO30			0x106 /* HP_DAC_I2C_FIL Pull-down */
 		MX8MM_IOMUXC_SAI3_RXFS_GPIO4_IO28			0x146 /* HP_DAC_PDN Pull-up */
-		>;
-	};
-
-	pinctrl_gpio5: gpio5grp {
-		fsl,pins = <
-		MX8MM_IOMUXC_SAI3_MCLK_GPIO5_IO2			0x80 /* DANTE_OSC_MCLK */
 		>;
 	};
 
