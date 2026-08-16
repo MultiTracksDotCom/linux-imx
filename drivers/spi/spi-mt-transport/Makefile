@@ -10,4 +10,7 @@ spi-mt-transport-y := \
 	spi_transport_hw_linux.o \
 	spi_mt_transport_drv.o
 
-ccflags-y += -I$(src)/core/kernel-compat -I$(src)/core/include
+# $(src) alone resolves against $(objtree) under Yocto's out-of-tree (O=)
+# kernel builds; these headers live only in the source tree, so the
+# $(srctree)/ prefix is required or the compile can't find them.
+ccflags-y += -I$(srctree)/$(src)/core/kernel-compat -I$(srctree)/$(src)/core/include
