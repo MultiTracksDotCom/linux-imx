@@ -25,16 +25,20 @@ Do not hand-edit these files. If a change is needed, make it in the firmware
 repo's copy first, then re-vendor by re-copying and updating the commit SHA
 above.
 
-The one exception: the vendored `.c` files' `#include <string.h>` (hosted
-libc, used by their STM32/host-native builds) doesn't resolve under the
-kernel's freestanding build -- `<stdint.h>`/`<stdbool.h>`/`<stdarg.h>`
-already work directly (GCC provides these regardless of `-nostdinc`, and
-other in-tree drivers in this repo already rely on that), but `<string.h>`
-is hosted-only. Rather than hand-edit the vendored files, `../Makefile`
-adds `core/kernel-compat/` to the include path ahead of the vendored
-headers -- it contains only a `string.h` shim that `#include
-<linux/string.h>`. This is a build-time-only addition, not a change to any
-vendored file; keep it that way on re-vendor.
+The exception: the vendored files include standard hosted-C11 headers
+(`<string.h>`, `<stdbool.h>`, `<stdint.h>`, `<stdarg.h>`) for their
+STM32/host-native builds. None of these resolve under the kernel's
+`-nostdinc` build -- this cross-compiler's own freestanding headers aren't
+on the search path either, and the kernel provides its own equivalents
+instead (`linux/string.h`, `linux/types.h` + `linux/stddef.h`,
+`linux/types.h`, `linux/stdarg.h` respectively). Rather than hand-edit the
+vendored files, `../Makefile` adds `core/kernel-compat/` to the include path
+ahead of the vendored headers (via `-I$(srctree)/$(src)/core/kernel-compat`
+-- the `$(srctree)/` prefix is required since `$(src)` alone resolves
+against `$(objtree)` under Yocto's out-of-tree kernel builds) -- it contains
+one shim per standard header, each `#include`-ing the kernel equivalent.
+This is a build-time-only addition, not a change to any vendored file; keep
+it that way on re-vendor.
 
 To check for drift against the firmware repo:
 
