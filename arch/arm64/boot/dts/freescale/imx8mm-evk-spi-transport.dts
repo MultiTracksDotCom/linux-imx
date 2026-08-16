@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: GPL-2.0
+//
+// Copyright 2026 MultiTracks.com, LLC.
+//
+// MT-158113: binds the MultiTracks SPI transport driver (Host role) onto
+// ecspi2, mirroring the pins already used for this same purpose on the
+// mt-connect production board (mt-connect.dts) -- see
+// firmware/firmware-common/spi-transport/docs/ProtocolSpec.md for the wire
+// protocol and NSS/NRDY handshake this binds to real hardware.
+//
+// NSS/NRDY are bound here as driver-private "mt-nss-gpios"/"mt-nrdy-gpios"
+// properties, NOT the standard "cs-gpios" -- the transport protocol holds
+// NSS low continuously across a multi-step request/ack/clock/complete
+// cycle, not just one SPI transfer, so the driver must own and drive it
+// directly rather than let the SPI core auto-toggle it per-message. Both
+// are declared GPIO_ACTIVE_HIGH regardless of the physical wire's true
+// active sense, so the driver's gpiod_get/set_value() calls always see the
+// literal pin level, matching the protocol's own "true = pin HIGH"
+// convention (see spi_transport_hw.h in the vendored core).
+
+#include "imx8mm-evk.dts"
+
+/delete-node/ &spidev0;
+
+&ecspi2 {
+	/delete-property/ cs-gpios;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi2 &pinctrl_ecspi2_cs &pinctrl_ecspi2_nrdy>;
+
+	mt_transport0: spi@0 {
+		compatible = "multitracks,spi-transport";
+		reg = <0>;
+		spi-max-frequency = <500000>; /* matches mt-connect.dts; revisit once link timing is measured */
+
+		mt-nss-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
+		mt-nrdy-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&iomuxc {
+	pinctrl_ecspi2_nrdy: ecspi2nrdygrp {
+		fsl,pins = <
+			MX8MM_IOMUXC_SAI3_RXC_GPIO4_IO29		0x82
+		>;
+	};
+};
