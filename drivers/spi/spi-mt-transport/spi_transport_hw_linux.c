@@ -7,8 +7,20 @@
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/string.h>
+#include <linux/completion.h>
 
 #include "spi_transport_hw_linux.h"
+
+/*
+ * Bound for mt_hw_abort()'s wait on an in-flight transfer's completion.
+ * spi_imx_dma_transfer()'s own internal timeout (spi_imx_calculate_timeout()
+ * in drivers/spi/spi-imx.c) is unconditionally >= 2000ms (a flat "+1 second,
+ * doubled" floor, regardless of this driver's small fixed frame size), and
+ * spi_imx_transfer_one() calls it exactly once with no internal retry --
+ * confirmed by reading both. 3000ms gives that floor comfortable scheduling
+ * margin without the abort path itself becoming an unbounded stall.
+ */
+#define MT_HW_ABORT_TIMEOUT_MS 3000
 
 /*
  * NSS/NRDY are driven/read as plain manually-owned GPIOs, not the SPI
@@ -31,6 +43,12 @@ static void mt_hw_spi_complete(void *context)
 	struct mt_transport_hw_ctx *ctx = context;
 	uint16_t length = ctx->msg.status == 0 ? ctx->xfer.len : 0;
 
+	/* Signal "msg/xfer no longer referenced by the SPI core" before
+	 * notifying the core -- pNotify may wake the tick thread straight
+	 * into a new pTransferStart(), which gates on this same completion.
+	 */
+	complete(&ctx->transferComplete);
+
 	if (ctx->pHw->pOnTransferComplete)
 		ctx->pHw->pOnTransferComplete(ctx->pHw->pCoreCtx, length);
 
@@ -44,6 +62,20 @@ static teSpiTransportError mt_hw_transfer_start(void *pContext, const uint8_t *p
 	struct mt_transport_hw_ctx *ctx = pContext;
 	int ret;
 
+	/* msg/xfer are shared across every transfer (see the struct comment)
+	 * -- reinitializing them while the SPI core still has the previous
+	 * submission queued/in-flight corrupts its internal message-queue and
+	 * scatterlist state. mt_hw_abort() is supposed to guarantee this is
+	 * clear before the core ever calls back in here again, so hitting
+	 * this is itself a bug elsewhere; refuse rather than corrupt state.
+	 */
+	if (!completion_done(&ctx->transferComplete)) {
+		dev_err(&ctx->spi->dev,
+			"pTransferStart() called with a previous transfer still in flight -- refusing to reinitialize shared msg/xfer state\n");
+		return eSpiTransportErrorHardwareFailure;
+	}
+	reinit_completion(&ctx->transferComplete);
+
 	spi_message_init(&ctx->msg);
 	memset(&ctx->xfer, 0, sizeof(ctx->xfer));
 	ctx->xfer.tx_buf = pTx;
@@ -56,6 +88,10 @@ static teSpiTransportError mt_hw_transfer_start(void *pContext, const uint8_t *p
 	ret = spi_async(ctx->spi, &ctx->msg);
 	if (ret) {
 		dev_dbg(&ctx->spi->dev, "spi_async failed: %d\n", ret);
+		/* No async completion will ever fire for this failed
+		 * submission -- release the in-flight guard ourselves.
+		 */
+		complete(&ctx->transferComplete);
 		return eSpiTransportErrorHardwareFailure;
 	}
 
@@ -98,15 +134,43 @@ static bool mt_hw_ready_read(void *pContext)
  * completion-timeout + dmaengine_terminate_all() + reset recovery internally
  * on a stuck DMA transfer (drivers/spi/spi-imx.c transfer_one()). The Linux
  * SPI core also has no public master-mode equivalent of HAL_SPI_Abort() --
- * spi_slave_abort() is slave-mode only. First cut: log-only stub. Revisit
- * once real EVK<->Disco hardware (MT-158682) shows whether spi-imx's
- * internal recovery is sufficient on its own.
+ * spi_slave_abort() is slave-mode only.
+ *
+ * Confirmed live on the EVK (MT-158682): spi-imx's internal recovery is NOT
+ * sufficient on its own, because it isn't synchronous with this call. The
+ * core's own disconnect watchdog (SPI_TRANSPORT_DISCONNECT_MS, 1500ms) fires
+ * before spi_imx_calculate_timeout()'s unconditional >=2000ms floor can
+ * possibly have elapsed, so a log-only pAbort() let the retry that follows
+ * reinitialize msg/xfer (see mt_hw_transfer_start()) while spi_imx was still
+ * blocked inside its own wait_for_completion_timeout() referencing that same
+ * memory -- corrupting the SPI core's message queue/scatterlist state and
+ * crashing with a NULL deref in spi_imx_dma_transfer()'s sg_last(). This
+ * contract has no return value (must be safe to call whether or not
+ * anything is armed, and the core proceeds regardless of what happens here),
+ * so the only correct fix available is to actually block until spi-imx's own
+ * bounded recovery has had time to finish before returning.
  */
 static void mt_hw_abort(void *pContext)
 {
 	struct mt_transport_hw_ctx *ctx = pContext;
 
-	dev_dbg(&ctx->spi->dev, "pAbort() called (stub -- see comment)\n");
+	if (completion_done(&ctx->transferComplete))
+		return;
+
+	if (!wait_for_completion_timeout(&ctx->transferComplete,
+					  msecs_to_jiffies(MT_HW_ABORT_TIMEOUT_MS))) {
+		dev_err(&ctx->spi->dev,
+			"pAbort(): transfer still in flight %ums after spi-imx's own DMA-timeout recovery should have finished -- proceeding anyway, next transfer may still race\n",
+			MT_HW_ABORT_TIMEOUT_MS);
+	}
+
+	/* Restore the "idle, no transfer in flight" resting state for the
+	 * next mt_hw_transfer_start(), whether we got here via a genuine
+	 * completion or the timeout fallback above -- wait_for_completion_*
+	 * consumes the completion on success, and the timeout path never
+	 * signaled it in the first place.
+	 */
+	complete(&ctx->transferComplete);
 }
 
 void mt_transport_hw_linux_init(struct mt_transport_hw_ctx *ctx, struct spi_device *spi,
@@ -117,6 +181,10 @@ void mt_transport_hw_linux_init(struct mt_transport_hw_ctx *ctx, struct spi_devi
 	ctx->spi = spi;
 	ctx->nss_gpiod = nss_gpiod;
 	ctx->nrdy_gpiod = nrdy_gpiod;
+
+	/* Starts "done" -- idle, no transfer in flight yet. */
+	init_completion(&ctx->transferComplete);
+	complete(&ctx->transferComplete);
 
 	ctx->pHw = pHw;
 

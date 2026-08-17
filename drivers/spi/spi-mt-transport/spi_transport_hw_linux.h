@@ -16,6 +16,7 @@
 #include <linux/spi/spi.h>
 #include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
+#include <linux/completion.h>
 
 #include "spi_transport/spi_transport_hw.h"
 
@@ -33,10 +34,18 @@ struct mt_transport_hw_ctx {
 	trSpiTransportHw *pHw;
 
 	/* Reused across every transfer -- the core's Host state machine only
-	 * ever has one transfer in flight at a time.
+	 * ever has one transfer in flight at a time. That invariant is
+	 * enforced (not just assumed) via transferComplete: "done" means no
+	 * spi_async() is outstanding against msg/xfer, so it's safe to
+	 * reinitialize them. Without this, mt_hw_abort() being a no-op could
+	 * let a retry reinitialize msg/xfer while the SPI core still had the
+	 * previous submission queued/in-flight, corrupting its internal
+	 * message-queue and scatterlist state -- see the NULL-deref crash in
+	 * spi_imx_dma_transfer()'s sg_last() this was written to fix.
 	 */
 	struct spi_message msg;
 	struct spi_transfer xfer;
+	struct completion transferComplete;
 
 	/* Completion notify to wake the driver's tick kthread after a
 	 * transfer completes -- set by spi_mt_transport_drv.c via
