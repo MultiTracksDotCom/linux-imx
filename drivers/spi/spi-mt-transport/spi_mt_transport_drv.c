@@ -31,6 +31,7 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sysfs.h>
+#include <linux/atomic.h>
 
 #include "spi_transport/spi_transport.h"
 #include "spi_transport/spi_transport_types.h"
@@ -66,6 +67,27 @@ struct mt_transport_priv {
 	uint8_t rx_buf[SPI_TRANSPORT_CHANNEL_MESSAGE_MAX];
 	uint16_t rx_len;
 	bool rx_valid;
+
+	/* Link-wide event counters -- mirrors the STM32 Client harness's
+	 * [DBG] conn=/disc=/hdrCrc=/payCrc=/seq=/dmaFail=/dmaTo= naming
+	 * (firmware-common/spi-transport/test/stm32-disco/app/, in the
+	 * firmware repo) so a fault-injection run's peer-side verdict can
+	 * actually be read off this Host, not just inferred from the absence
+	 * of a crash. Before this, mt_transport_event_callback() only logged
+	 * via dev_dbg(), invisible in dmesg without dynamic debug explicitly
+	 * enabled -- confirmed live: zero log output across ~50 real
+	 * connect/disconnect cycles and dozens of DMA-failure injections
+	 * during hardware bring-up (MT-158113). atomic_t: incremented from
+	 * the tick thread (mt_transport_event_callback(), single-threaded),
+	 * read from arbitrary userspace context via sysfs.
+	 */
+	atomic_t evt_connected;
+	atomic_t evt_disconnected;
+	atomic_t evt_hdr_crc;
+	atomic_t evt_payload_crc;
+	atomic_t evt_seq_gap;
+	atomic_t evt_dma_failure;
+	atomic_t evt_dma_timeout;
 };
 
 /* Wakes the tick kthread -- shared by the SPI-completion path and the
@@ -105,7 +127,39 @@ static void mt_transport_event_callback(void *pContext, teSpiTransportEvent eEve
 {
 	struct mt_transport_priv *priv = pContext;
 
-	dev_dbg(priv->dev, "link event: %d\n", (int)eEvent);
+	switch (eEvent) {
+	case eSpiTransportEventConnected:
+		atomic_inc(&priv->evt_connected);
+		dev_info(priv->dev, "link event: connected\n");
+		break;
+	case eSpiTransportEventDisconnected:
+		atomic_inc(&priv->evt_disconnected);
+		dev_info(priv->dev, "link event: disconnected\n");
+		break;
+	case eSpiTransportEventErrorHeaderCrc:
+		atomic_inc(&priv->evt_hdr_crc);
+		dev_warn(priv->dev, "link event: header CRC error\n");
+		break;
+	case eSpiTransportEventErrorPayloadCrc:
+		atomic_inc(&priv->evt_payload_crc);
+		dev_warn(priv->dev, "link event: payload CRC error\n");
+		break;
+	case eSpiTransportEventErrorSequenceGap:
+		atomic_inc(&priv->evt_seq_gap);
+		dev_warn(priv->dev, "link event: sequence gap\n");
+		break;
+	case eSpiTransportEventErrorDmaFailure:
+		atomic_inc(&priv->evt_dma_failure);
+		dev_warn(priv->dev, "link event: DMA arm failure\n");
+		break;
+	case eSpiTransportEventErrorDmaTimeout:
+		atomic_inc(&priv->evt_dma_timeout);
+		dev_warn(priv->dev, "link event: DMA timeout\n");
+		break;
+	default:
+		dev_warn(priv->dev, "link event: unknown (%d)\n", (int)eEvent);
+		break;
+	}
 }
 
 static int mt_transport_tick_thread_fn(void *data)
@@ -223,8 +277,28 @@ static ssize_t link_state_show(struct device *dev, struct device_attribute *attr
 }
 static DEVICE_ATTR_RO(link_state);
 
+static ssize_t event_counters_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct spi_device *spi = to_spi_device(dev);
+	struct mt_transport_priv *priv = spi_get_drvdata(spi);
+
+	(void)attr;
+	/* Field names match the STM32 Client harness's [DBG] line
+	 * (conn=/disc=/hdrCrc=/payCrc=/seq=/dmaFail=/dmaTo=) so a
+	 * fault-injection run's peer-side verdict can be read off this file
+	 * directly against that harness's docs/TestPlan.md.
+	 */
+	return sysfs_emit(buf, "conn=%d disc=%d hdrCrc=%d payCrc=%d seq=%d dmaFail=%d dmaTo=%d\n",
+			   atomic_read(&priv->evt_connected), atomic_read(&priv->evt_disconnected),
+			   atomic_read(&priv->evt_hdr_crc), atomic_read(&priv->evt_payload_crc),
+			   atomic_read(&priv->evt_seq_gap), atomic_read(&priv->evt_dma_failure),
+			   atomic_read(&priv->evt_dma_timeout));
+}
+static DEVICE_ATTR_RO(event_counters);
+
 static struct attribute *mt_transport_attrs[] = {
 	&dev_attr_link_state.attr,
+	&dev_attr_event_counters.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(mt_transport);
