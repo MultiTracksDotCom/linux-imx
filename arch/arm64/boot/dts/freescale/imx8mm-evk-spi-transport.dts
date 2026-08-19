@@ -14,9 +14,10 @@
 // cycle, not just one SPI transfer, so the driver must own and drive it
 // directly rather than let the SPI core auto-toggle it per-message. Both
 // are declared GPIO_ACTIVE_HIGH regardless of the physical wire's true
-// active sense, so the driver's gpiod_get/set_value() calls always see the
-// literal pin level, matching the protocol's own "true = pin HIGH"
-// convention (see spi_transport_hw.h in the vendored core).
+// active sense, so the driver's gpiod_get/set_value_cansleep() calls
+// always see the literal pin level, matching the protocol's own
+// "true = pin HIGH" convention (see drivers/spi/spi-mt-transport/
+// spi_transport_hw_linux.c).
 
 #include "imx8mm-evk.dts"
 

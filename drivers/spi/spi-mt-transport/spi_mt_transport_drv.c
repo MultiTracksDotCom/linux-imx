@@ -216,22 +216,23 @@ static void mt_transport_event_callback(void *pContext, teSpiTransportEvent eEve
 	}
 }
 
-/// @brief Submit the oldest queued TX slot (if any) via spiTransportSend().
-///        A success return proves the *previous* in-flight slot (if any) is
-///        now done -- the core only accepts a new send once the last one's
-///        final chunk is confirmed -- so that previous slot is freed right
-///        here, not after a guessed timeout. Called once per tick thread
-///        iteration; a Busy return just means retry next tick, no state
-///        changes.
-///
-/// Gates on tx_queued_count, not "is anything occupied at all": an earlier
-/// version checked the combined queued+in-flight total, which let tx_head
-/// advance onto a slot write() had never actually filled whenever exactly
-/// one message was in flight and nothing new had been queued behind it --
-/// tx_service() would then resend whatever stale bytes happened to be
-/// sitting in that slot (found via Copilot PR review). Tracking queued
-/// count separately from "is one slot in flight" makes "is there anything
-/// NEW to submit" the only thing this check needs to answer.
+/*
+ * Submit the oldest queued TX slot (if any) via spiTransportSend(). A
+ * success return proves the *previous* in-flight slot (if any) is now
+ * done -- the core only accepts a new send once the last one's final
+ * chunk is confirmed -- so that previous slot is freed right here, not
+ * after a guessed timeout. Called once per tick thread iteration; a Busy
+ * return just means retry next tick, no state changes.
+ *
+ * Gates on tx_queued_count, not "is anything occupied at all": an earlier
+ * version checked the combined queued+in-flight total, which let tx_head
+ * advance onto a slot write() had never actually filled whenever exactly
+ * one message was in flight and nothing new had been queued behind it --
+ * tx_service() would then resend whatever stale bytes happened to be
+ * sitting in that slot (found via Copilot PR review). Tracking queued
+ * count separately from "is one slot in flight" makes "is there anything
+ * NEW to submit" the only thing this check needs to answer.
+ */
 static void mt_transport_tx_service(struct mt_transport_priv *priv)
 {
 	unsigned long flags;
@@ -328,11 +329,13 @@ static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_
 	return len;
 }
 
-/// @brief True if a new slot can be enqueued. Caller must already hold
-///        tx_lock -- occupied total is tx_queued_count (not-yet-submitted
-///        slots) plus one more if a slot is currently in flight
-///        (tx_in_flight_idx >= 0), since that slot is still reserved even
-///        though it doesn't count toward tx_queued_count.
+/*
+ * True if a new slot can be enqueued. Caller must already hold tx_lock --
+ * occupied total is tx_queued_count (not-yet-submitted slots) plus one
+ * more if a slot is currently in flight (tx_in_flight_idx >= 0), since
+ * that slot is still reserved even though it doesn't count toward
+ * tx_queued_count.
+ */
 static inline bool mt_transport_tx_room_locked(struct mt_transport_priv *priv)
 {
 	unsigned int occupied = priv->tx_queued_count + (priv->tx_in_flight_idx >= 0 ? 1 : 0);
@@ -340,15 +343,16 @@ static inline bool mt_transport_tx_room_locked(struct mt_transport_priv *priv)
 	return occupied < MT_TRANSPORT_TX_QUEUE_DEPTH;
 }
 
-/// @brief wait_event_interruptible()'s condition check only -- takes and
-///        releases tx_lock itself since it must be callable without
-///        already holding it. mt_transport_misc_write()'s own room check
-///        below calls mt_transport_tx_room_locked() directly instead
-///        (already holding the lock at that point) rather than this
-///        wrapper, and deliberately so: that check has to stay under the
-///        *same* lock acquisition that immediately follows (the enqueue),
-///        otherwise a second writer could take the now-free slot in the
-///        gap between checking and re-locking.
+/*
+ * wait_event_interruptible()'s condition check only -- takes and releases
+ * tx_lock itself since it must be callable without already holding it.
+ * mt_transport_misc_write()'s own room check below calls
+ * mt_transport_tx_room_locked() directly instead (already holding the
+ * lock at that point) rather than this wrapper, and deliberately so: that
+ * check has to stay under the *same* lock acquisition that immediately
+ * follows (the enqueue), otherwise a second writer could take the
+ * now-free slot in the gap between checking and re-locking.
+ */
 static bool mt_transport_tx_has_room(struct mt_transport_priv *priv)
 {
 	unsigned long flags;
@@ -541,6 +545,14 @@ static int mt_transport_probe(struct spi_device *spi)
 	 * is not fatal.
 	 */
 	priv->nrdy_irq = gpiod_to_irq(priv->nrdy_gpiod);
+	/* -EPROBE_DEFER means the IRQ chip backing this GPIO isn't ready yet,
+	 * not "this GPIO has no IRQ" -- must propagate it so the kernel
+	 * retries this whole probe() later, or the IRQ optimization gets
+	 * silently and permanently disabled by a boot-time ordering race
+	 * instead of the actual IRQ becoming available a bit later.
+	 */
+	if (priv->nrdy_irq == -EPROBE_DEFER)
+		return dev_err_probe(dev, -EPROBE_DEFER, "NRDY IRQ not ready yet\n");
 	if (priv->nrdy_irq > 0) {
 		ret = devm_request_threaded_irq(dev, priv->nrdy_irq, NULL,
 						 mt_transport_hw_linux_nrdy_irq,

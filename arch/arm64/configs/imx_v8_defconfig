@@ -451,12 +451,6 @@ CONFIG_SPI_FSL_QUADSPI=y
 CONFIG_SPI_NXP_FLEXSPI=y
 CONFIG_SPI_IMX=y
 CONFIG_SPI_FSL_DSPI=y
-# CONFIG_SPI_MT_TRANSPORT requires drivers/spi/spi-mt-transport/core/ to be
-# staged first (Yocto-only, not committed here -- see that directory's
-# Makefile for why). A plain `make imx_v8_defconfig && make modules` build
-# outside the imx8mmini-bb-evk BSP pipeline will fail on this module for
-# that reason -- expected, not a defconfig bug.
-CONFIG_SPI_MT_TRANSPORT=m
 CONFIG_SPI_PL022=y
 CONFIG_SPI_ROCKCHIP=y
 CONFIG_SPI_SPIDEV=y
