@@ -22,14 +22,15 @@ description: |
   so the driver owns and drives it directly rather than letting the SPI
   core auto-toggle it per-message.
 
+allOf:
+  - $ref: /schemas/spi/spi-peripheral-props.yaml#
+
 properties:
   compatible:
     const: multitracks,spi-transport
 
   reg:
     maxItems: 1
-
-  spi-max-frequency: true
 
   mt-nss-gpios:
     maxItems: 1
@@ -49,10 +50,11 @@ properties:
 required:
   - compatible
   - reg
+  - spi-max-frequency
   - mt-nss-gpios
   - mt-nrdy-gpios
 
-additionalProperties: false
+unevaluatedProperties: false
 
 examples:
   - |
