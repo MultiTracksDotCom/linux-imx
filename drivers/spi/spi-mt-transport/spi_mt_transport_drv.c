@@ -61,6 +61,9 @@ struct mt_transport_priv {
 	struct gpio_desc *nss_gpiod;
 	struct gpio_desc *nrdy_gpiod;
 	int nrdy_irq;
+	bool nrdy_irq_requested; /* only true once devm_request_threaded_irq()
+				   * actually succeeded -- see mt_transport_remove().
+				   */
 
 	trSpiTransportOs os;
 	trSpiTransportHw hw;
@@ -553,7 +556,12 @@ static int mt_transport_probe(struct spi_device *spi)
 	 */
 	if (priv->nrdy_irq == -EPROBE_DEFER)
 		return dev_err_probe(dev, -EPROBE_DEFER, "NRDY IRQ not ready yet\n");
-	if (priv->nrdy_irq > 0) {
+	/* >= 0, not > 0: IRQ 0 is a legally valid IRQ number on some
+	 * platforms/irqdomains -- only negative values mean "no IRQ" per
+	 * gpiod_to_irq()'s own contract. Treating 0 as "no IRQ" would skip
+	 * the threaded handler for a GPIO that genuinely maps to IRQ 0.
+	 */
+	if (priv->nrdy_irq >= 0) {
 		ret = devm_request_threaded_irq(dev, priv->nrdy_irq, NULL,
 						 mt_transport_hw_linux_nrdy_irq,
 						 IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
@@ -561,6 +569,8 @@ static int mt_transport_probe(struct spi_device *spi)
 						 DRIVER_NAME "-nrdy", &priv->hw_ctx);
 		if (ret)
 			dev_dbg(dev, "no NRDY IRQ (%d) -- falling back to tick-poll only\n", ret);
+		else
+			priv->nrdy_irq_requested = true;
 	} else {
 		dev_dbg(dev, "NRDY line has no IRQ -- tick-poll only\n");
 	}
@@ -603,6 +613,21 @@ static int mt_transport_probe(struct spi_device *spi)
 static void mt_transport_remove(struct spi_device *spi)
 {
 	struct mt_transport_priv *priv = spi_get_drvdata(spi);
+
+	/* Free the NRDY IRQ (if one was ever successfully requested) before
+	 * anything else: it's devm-managed, so it would otherwise only get
+	 * freed by the driver core *after* this function returns, leaving it
+	 * live through misc_deregister()/kthread_stop()/spiTransportStop()
+	 * below -- if the line toggles during that window (a real STM32
+	 * Client peer doesn't stop just because this side is unbinding),
+	 * mt_transport_hw_linux_nrdy_irq() could fire and call
+	 * priv->hw.pOnReadyEvent() into a core that's mid-teardown.
+	 * devm_free_irq() blocks until any already-running (threaded)
+	 * handler invocation finishes, so this also can't race an
+	 * in-flight callback the way a bare disable_irq() wouldn't.
+	 */
+	if (priv->nrdy_irq_requested)
+		devm_free_irq(priv->dev, priv->nrdy_irq, &priv->hw_ctx);
 
 	misc_deregister(&priv->misc);
 	/* kthread_stop() blocks until the tick thread's loop actually exits,

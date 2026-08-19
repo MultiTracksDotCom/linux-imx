@@ -16,7 +16,12 @@
 # with a clear message instead of the opaque "No rule to make target
 # core/spi_transport.o" a missing core/ would otherwise produce deep in
 # the build.
-ifeq ($(wildcard $(src)/core/spi_transport.c),)
+# $(src) alone resolves against $(objtree) under Yocto's out-of-tree (O=)
+# kernel builds, same reason the ccflags-y line below needs the
+# $(srctree)/ prefix -- this check needs it too, or it always reports
+# core/ missing even when it's genuinely staged (confirmed via a real
+# false-positive build failure without this prefix).
+ifeq ($(wildcard $(srctree)/$(src)/core/spi_transport.c),)
 $(error spi-mt-transport: core/ is not staged. This module only builds inside \
 	the imx8mmini-bb-evk Yocto BSP pipeline, which fetches the portable \
 	protocol core from the firmware repo and stages it into core/ before \
