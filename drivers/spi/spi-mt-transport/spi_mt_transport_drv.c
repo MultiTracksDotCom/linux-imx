@@ -38,6 +38,7 @@
 #include <linux/string.h>
 #include <linux/sysfs.h>
 #include <linux/atomic.h>
+#include <linux/kref.h>
 
 #include "spi_transport/spi_transport.h"
 #include "spi_transport/spi_transport_types.h"
@@ -136,6 +137,31 @@ struct mt_transport_priv {
 	atomic_t evt_seq_gap;
 	atomic_t evt_dma_failure;
 	atomic_t evt_dma_timeout;
+
+	/* priv is kzalloc'd, not devm_kzalloc'd (see mt_transport_probe()):
+	 * the embedded miscdevice can outlive the SPI device across an
+	 * unbind if userspace still holds /dev/mt_spi_transport open, so
+	 * something other than devm has to own freeing this memory --
+	 * kref does, with one reference held by the driver instance itself
+	 * (dropped in mt_transport_remove()) and one more per open fd
+	 * (mt_transport_misc_open()/_release()). Found by Copilot's PR #46
+	 * review (miscdevice/priv lifetime UAF).
+	 */
+	struct kref refcount;
+	atomic_t available; /* 1 = no fd currently open, 0 = one is --
+			      * enforces single-open semantics, see
+			      * mt_transport_misc_open(). This also closes
+			      * the concurrent-reader race Copilot's review
+			      * separately flagged in
+			      * mt_transport_misc_read(): with at most one
+			      * open fd, there is only ever one reader.
+			      */
+	bool removed; /* true once mt_transport_remove() has torn down the
+		       * transport core/tick thread -- read()/write() must
+		       * bail out with -ENODEV rather than touching
+		       * now-invalid os/hw state via an fd that outlived
+		       * unbind.
+		       */
 };
 
 /* Wakes the tick kthread -- shared by the SPI-completion path and the
@@ -279,6 +305,44 @@ static int mt_transport_tick_thread_fn(void *data)
 
 /* --- Minimal userspace interface (placeholder ahead of MT-158682) --- */
 
+static void mt_transport_priv_release(struct kref *kref)
+{
+	struct mt_transport_priv *priv = container_of(kref, struct mt_transport_priv, refcount);
+
+	kfree(priv);
+}
+
+static int mt_transport_misc_open(struct inode *inode, struct file *filp)
+{
+	struct miscdevice *misc = filp->private_data;
+	struct mt_transport_priv *priv = container_of(misc, struct mt_transport_priv, misc);
+
+	(void)inode;
+
+	if (READ_ONCE(priv->removed))
+		return -ENODEV;
+
+	if (!atomic_dec_and_test(&priv->available)) {
+		atomic_inc(&priv->available);
+		return -EBUSY;
+	}
+
+	kref_get(&priv->refcount);
+	return 0;
+}
+
+static int mt_transport_misc_release(struct inode *inode, struct file *filp)
+{
+	struct miscdevice *misc = filp->private_data;
+	struct mt_transport_priv *priv = container_of(misc, struct mt_transport_priv, misc);
+
+	(void)inode;
+
+	atomic_inc(&priv->available);
+	kref_put(&priv->refcount, mt_transport_priv_release);
+	return 0;
+}
+
 static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_t count,
 				       loff_t *ppos)
 {
@@ -296,6 +360,9 @@ static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_
 	 */
 	if (count == 0)
 		return 0;
+
+	if (READ_ONCE(priv->removed))
+		return -ENODEV;
 
 	if (filp->f_flags & O_NONBLOCK) {
 		spin_lock_irqsave(&priv->rx_lock, irqflags);
@@ -386,6 +453,9 @@ static ssize_t mt_transport_misc_write(struct file *filp, const char __user *buf
 	if (count == 0)
 		return 0;
 
+	if (READ_ONCE(priv->removed))
+		return -ENODEV;
+
 	if (len > sizeof(scratch))
 		len = sizeof(scratch);
 	if (copy_from_user(scratch, buf, len))
@@ -433,6 +503,8 @@ static __poll_t mt_transport_misc_poll(struct file *filp, poll_table *wait)
 
 static const struct file_operations mt_transport_misc_fops = {
 	.owner = THIS_MODULE,
+	.open = mt_transport_misc_open,
+	.release = mt_transport_misc_release,
 	.read = mt_transport_misc_read,
 	.write = mt_transport_misc_write,
 	.poll = mt_transport_misc_poll,
@@ -493,9 +565,17 @@ static int mt_transport_probe(struct spi_device *spi)
 	trSpiTransportConfig config;
 	int ret;
 
-	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
+	/* Plain kzalloc, not devm_kzalloc: see the refcount/available/removed
+	 * comment on struct mt_transport_priv -- this memory must be able to
+	 * outlive the SPI device's unbind if userspace still holds
+	 * /dev/mt_spi_transport open.
+	 */
+	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
+
+	kref_init(&priv->refcount);
+	atomic_set(&priv->available, 1);
 
 	priv->spi = spi;
 	priv->dev = dev;
@@ -512,18 +592,24 @@ static int mt_transport_probe(struct spi_device *spi)
 	 * outside the SPI core's own chip-select handling.
 	 */
 	priv->nss_gpiod = devm_gpiod_get(dev, "mt-nss", GPIOD_OUT_HIGH);
-	if (IS_ERR(priv->nss_gpiod))
-		return dev_err_probe(dev, PTR_ERR(priv->nss_gpiod),
-				      "failed to get mt-nss-gpios\n");
+	if (IS_ERR(priv->nss_gpiod)) {
+		ret = PTR_ERR(priv->nss_gpiod);
+		kref_put(&priv->refcount, mt_transport_priv_release);
+		return dev_err_probe(dev, ret, "failed to get mt-nss-gpios\n");
+	}
 
 	priv->nrdy_gpiod = devm_gpiod_get(dev, "mt-nrdy", GPIOD_IN);
-	if (IS_ERR(priv->nrdy_gpiod))
-		return dev_err_probe(dev, PTR_ERR(priv->nrdy_gpiod),
-				      "failed to get mt-nrdy-gpios\n");
+	if (IS_ERR(priv->nrdy_gpiod)) {
+		ret = PTR_ERR(priv->nrdy_gpiod);
+		kref_put(&priv->refcount, mt_transport_priv_release);
+		return dev_err_probe(dev, ret, "failed to get mt-nrdy-gpios\n");
+	}
 
 	ret = mt_transport_os_linux_init(&priv->os_ctx, dev, &priv->os);
-	if (ret)
+	if (ret) {
+		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, ret, "mt_transport_os_linux_init failed\n");
+	}
 	mt_transport_hw_linux_init(&priv->hw_ctx, spi, priv->nss_gpiod, priv->nrdy_gpiod, &priv->hw);
 	mt_transport_hw_linux_set_notify(&priv->hw_ctx, mt_transport_tick_notify, priv);
 
@@ -531,14 +617,18 @@ static int mt_transport_probe(struct spi_device *spi)
 	config.prOs = &priv->os;
 	config.prHw = &priv->hw;
 
-	if (spiTransportInit(&config, &priv->htransport) != eSpiTransportErrorNone)
+	if (spiTransportInit(&config, &priv->htransport) != eSpiTransportErrorNone) {
+		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, -EINVAL, "spiTransportInit failed\n");
+	}
 
 	if (spiTransportRegisterChannel(priv->htransport, MT_TRANSPORT_CHANNEL,
 					 mt_transport_rx_callback, mt_transport_event_callback,
 					 priv)
-	    != eSpiTransportErrorNone)
+	    != eSpiTransportErrorNone) {
+		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, -EINVAL, "spiTransportRegisterChannel failed\n");
+	}
 
 	/* Optional latency optimization -- if the NRDY line has no usable
 	 * IRQ, tick-driven pReadyRead() polling (nominally every 2ms, see the
@@ -554,8 +644,10 @@ static int mt_transport_probe(struct spi_device *spi)
 	 * silently and permanently disabled by a boot-time ordering race
 	 * instead of the actual IRQ becoming available a bit later.
 	 */
-	if (priv->nrdy_irq == -EPROBE_DEFER)
+	if (priv->nrdy_irq == -EPROBE_DEFER) {
+		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, -EPROBE_DEFER, "NRDY IRQ not ready yet\n");
+	}
 	/* >= 0, not > 0: IRQ 0 is a legally valid IRQ number on some
 	 * platforms/irqdomains -- only negative values mean "no IRQ" per
 	 * gpiod_to_irq()'s own contract. Treating 0 as "no IRQ" would skip
@@ -576,12 +668,15 @@ static int mt_transport_probe(struct spi_device *spi)
 	}
 
 	priv->tick_thread = kthread_run(mt_transport_tick_thread_fn, priv, "%s-tick", DRIVER_NAME);
-	if (IS_ERR(priv->tick_thread))
-		return dev_err_probe(dev, PTR_ERR(priv->tick_thread),
-				      "failed to start tick thread\n");
+	if (IS_ERR(priv->tick_thread)) {
+		ret = PTR_ERR(priv->tick_thread);
+		kref_put(&priv->refcount, mt_transport_priv_release);
+		return dev_err_probe(dev, ret, "failed to start tick thread\n");
+	}
 
 	if (spiTransportStart(priv->htransport) != eSpiTransportErrorNone) {
 		kthread_stop(priv->tick_thread);
+		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, -EINVAL, "spiTransportStart failed\n");
 	}
 
@@ -603,6 +698,7 @@ static int mt_transport_probe(struct spi_device *spi)
 		 */
 		kthread_stop(priv->tick_thread);
 		spiTransportStop(priv->htransport);
+		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, ret, "misc_register failed\n");
 	}
 
@@ -613,6 +709,19 @@ static int mt_transport_probe(struct spi_device *spi)
 static void mt_transport_remove(struct spi_device *spi)
 {
 	struct mt_transport_priv *priv = spi_get_drvdata(spi);
+
+	/* Set first, before anything else is torn down: any read()/write()
+	 * on an fd that outlived this unbind must bail out with -ENODEV
+	 * instead of touching the os/hw state this function is about to
+	 * stop -- e.g. write()'s priv->os.pTaskNotifyGive() call would
+	 * otherwise reach into a tick thread/os_ctx that's mid-teardown or
+	 * already gone. This is a fail-fast measure, not the memory-safety
+	 * fix itself -- priv's memory itself stays valid for as long as any
+	 * such fd remains open via the kref below (see struct
+	 * mt_transport_priv's refcount/available/removed comment). Found by
+	 * Copilot's PR #46 review.
+	 */
+	WRITE_ONCE(priv->removed, true);
 
 	/* Free the NRDY IRQ (if one was ever successfully requested) before
 	 * anything else: it's devm-managed, so it would otherwise only get
@@ -639,6 +748,15 @@ static void mt_transport_remove(struct spi_device *spi)
 	 */
 	kthread_stop(priv->tick_thread);
 	spiTransportStop(priv->htransport);
+
+	/* Drops the driver instance's own reference (taken via kref_init()
+	 * in probe()). If no fd is currently open, this is the last
+	 * reference and priv is freed right here -- same timing as the
+	 * devm-based lifetime this replaced. If userspace still holds
+	 * /dev/mt_spi_transport open, priv stays alive (kept by that fd's
+	 * own reference from mt_transport_misc_open()) until it's closed.
+	 */
+	kref_put(&priv->refcount, mt_transport_priv_release);
 }
 
 static const struct of_device_id mt_transport_of_match[] = {
