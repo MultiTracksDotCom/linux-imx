@@ -372,9 +372,19 @@ static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_
 		}
 		spin_unlock_irqrestore(&priv->rx_lock, irqflags);
 	} else {
-		ret = wait_event_interruptible(priv->rx_wq, READ_ONCE(priv->rx_valid));
+		/* removed is included in the wait condition (not just checked
+		 * up front) so a reader already blocked here when
+		 * mt_transport_remove() runs actually wakes up instead of
+		 * sleeping forever -- remove() wakes rx_wq right after
+		 * setting removed for exactly this reason. Found by
+		 * Copilot's PR #46 review.
+		 */
+		ret = wait_event_interruptible(priv->rx_wq,
+						READ_ONCE(priv->rx_valid) || READ_ONCE(priv->removed));
 		if (ret)
 			return ret;
+		if (READ_ONCE(priv->removed))
+			return -ENODEV;
 	}
 
 	/* Snapshot into a local buffer under the lock, then copy_to_user()
@@ -469,9 +479,18 @@ static ssize_t mt_transport_misc_write(struct file *filp, const char __user *buf
 
 		if (filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
-		ret = wait_event_interruptible(priv->tx_free_wq, mt_transport_tx_has_room(priv));
+		/* removed is included in the wait condition for the same
+		 * reason as mt_transport_misc_read()'s rx_wq wait -- a
+		 * writer already blocked here on unbind must not sleep
+		 * forever; remove() wakes tx_free_wq right after setting
+		 * removed. Found by Copilot's PR #46 review.
+		 */
+		ret = wait_event_interruptible(priv->tx_free_wq,
+						mt_transport_tx_has_room(priv) || READ_ONCE(priv->removed));
 		if (ret)
 			return ret;
+		if (READ_ONCE(priv->removed))
+			return -ENODEV;
 	}
 
 	idx = priv->tx_tail;
@@ -496,6 +515,14 @@ static __poll_t mt_transport_misc_poll(struct file *filp, poll_table *wait)
 	__poll_t mask = 0;
 
 	poll_wait(filp, &priv->rx_wq, wait);
+	/* Reported so an fd that outlives unbind can detect teardown via
+	 * poll() instead of only finding out on its next read()/write() --
+	 * rx_wq is woken on removal (see mt_transport_remove()), so this
+	 * check is reachable rather than only ever seen on a fresh poll().
+	 * Found by Copilot's PR #46 review.
+	 */
+	if (READ_ONCE(priv->removed))
+		return EPOLLHUP | EPOLLERR;
 	if (READ_ONCE(priv->rx_valid))
 		mask |= EPOLLIN | EPOLLRDNORM;
 	return mask;
@@ -722,6 +749,14 @@ static void mt_transport_remove(struct spi_device *spi)
 	 * Copilot's PR #46 review.
 	 */
 	WRITE_ONCE(priv->removed, true);
+	/* Wake any reader/writer already blocked in wait_event_interruptible()
+	 * on rx_wq/tx_free_wq -- both now include removed in their wait
+	 * condition, but a waiter sleeping before this WRITE_ONCE() would
+	 * otherwise never re-check it and could hang forever across unbind.
+	 * Found by Copilot's PR #46 review.
+	 */
+	wake_up_interruptible_all(&priv->rx_wq);
+	wake_up_interruptible_all(&priv->tx_free_wq);
 
 	/* Free the NRDY IRQ (if one was ever successfully requested) before
 	 * anything else: it's devm-managed, so it would otherwise only get
