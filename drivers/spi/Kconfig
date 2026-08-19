@@ -1211,6 +1211,18 @@ config SPI_LOOPBACK_TEST
 	  primarily used for development of spi_master drivers
 	  and to detect regressions
 
+config SPI_MT_TRANSPORT
+	tristate "MultiTracks SPI transport protocol driver (Host role)"
+	depends on ARCH_MXC || COMPILE_TEST
+	depends on GPIOLIB
+	help
+	  Kernel Host-role port of the MultiTracks SPI transport protocol
+	  (see firmware repo firmware-common/spi-transport/) -- a framed,
+	  multi-channel, ack/retry link between an i.MX SoC (Host) and an
+	  STM32-class client MCU (Client) over a raw SPI bus, plus a
+	  companion NRDY GPIO handshake line in addition to the physical
+	  SPI SCK/MOSI/MISO/NSS lines.
+
 config SPI_TLE62X0
 	tristate "Infineon TLE62X0 (for power switching)"
 	depends on SYSFS
