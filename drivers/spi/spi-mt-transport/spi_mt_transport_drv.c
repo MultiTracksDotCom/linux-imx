@@ -49,8 +49,7 @@
 #define MT_TRANSPORT_CHANNEL 1
 #define MT_TRANSPORT_TX_QUEUE_DEPTH 10
 
-struct mt_transport_tx_slot
-{
+struct mt_transport_tx_slot {
 	uint8_t buf[SPI_TRANSPORT_CHANNEL_MESSAGE_MAX];
 	uint16_t len;
 };
