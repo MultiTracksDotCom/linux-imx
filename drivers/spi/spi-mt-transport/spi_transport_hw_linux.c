@@ -34,8 +34,19 @@
  * property, specifically so the SPI core never learns about them and never
  * tries to toggle them itself. Both are declared GPIO_ACTIVE_HIGH in the
  * devicetree regardless of the physical wire's true active sense, so that
- * gpiod_set_value()'s logical value always equals the literal pin level --
- * matching this whole contract's "true = pin HIGH" convention exactly.
+ * gpiod_set_value_cansleep()'s logical value always equals the literal pin
+ * level -- matching this whole contract's "true = pin HIGH" convention
+ * exactly.
+ *
+ * All three accessors below use the _cansleep variants: none of these
+ * calls happen from atomic/IRQ context -- mt_hw_select_assert() and
+ * mt_hw_ready_read() run from the tick kthread, and
+ * mt_transport_hw_linux_nrdy_irq() is registered as a threaded IRQ (NULL
+ * primary handler), which by definition runs in a context where sleeping
+ * is allowed. Using the plain (non-cansleep) accessors would be unsafe if
+ * this GPIO ever ends up backed by a sleep-capable provider (e.g. an
+ * I2C/SPI GPIO expander) instead of the native SoC GPIO controller this
+ * board happens to use.
  */
 
 static void mt_hw_spi_complete(void *context)
@@ -105,7 +116,7 @@ static void mt_hw_select_assert(void *pContext, bool high)
 {
 	struct mt_transport_hw_ctx *ctx = pContext;
 
-	gpiod_set_value(ctx->nss_gpiod, high ? 1 : 0);
+	gpiod_set_value_cansleep(ctx->nss_gpiod, high ? 1 : 0);
 }
 
 /* Client only -- Host never calls this; left wired to a harmless stub so a
@@ -124,7 +135,7 @@ static bool mt_hw_ready_read(void *pContext)
 {
 	struct mt_transport_hw_ctx *ctx = pContext;
 
-	return gpiod_get_value(ctx->nrdy_gpiod) ? true : false;
+	return gpiod_get_value_cansleep(ctx->nrdy_gpiod) ? true : false;
 }
 
 /*
@@ -214,7 +225,7 @@ void mt_transport_hw_linux_set_notify(struct mt_transport_hw_ctx *ctx,
 irqreturn_t mt_transport_hw_linux_nrdy_irq(int irq, void *dev_id)
 {
 	struct mt_transport_hw_ctx *ctx = dev_id;
-	bool high = gpiod_get_value(ctx->nrdy_gpiod) ? true : false;
+	bool high = gpiod_get_value_cansleep(ctx->nrdy_gpiod) ? true : false;
 
 	if (ctx->pHw->pOnReadyEvent)
 		ctx->pHw->pOnReadyEvent(ctx->pHw->pCoreCtx, high);

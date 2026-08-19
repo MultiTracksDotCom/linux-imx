@@ -1,14 +1,18 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * spi_mt_transport_drv.c - Linux kernel Host-role driver for the MultiTracks
- * SPI transport protocol. Builds as an out-of-tree Yocto kernel module (see
- * imx8mmini-bb-evk's meta-mt-transport-evk recipes-kernel/spi-mt-transport/)
- * against the portable protocol core at ../../{,../inc/spi_transport}/ in
- * this same source tree -- referenced in place, not vendored/copied.
+ * SPI transport protocol. Builds in-tree (see drivers/spi/Kconfig's
+ * CONFIG_SPI_MT_TRANSPORT and this directory's Makefile) against the
+ * portable protocol core, which is NOT committed in this repo -- it's the
+ * firmware repo's firmware-common/spi-transport/{src,inc}/ single source
+ * of truth, staged into this directory's gitignored core/ subdirectory at
+ * Yocto build time (see imx8mmini-bb-evk's meta-mt-transport-evk
+ * linux-imx_%.bbappend's do_patch postfunc).
  *
  * Talks Host role to an STM32-class Client peer over a raw SPI bus plus a
- * companion NRDY GPIO handshake line. See ../../docs/ProtocolSpec.md for the
- * wire protocol and handshake state machine this ports into the kernel.
+ * companion NRDY GPIO handshake line. See the firmware repo's
+ * firmware-common/spi-transport/docs/ProtocolSpec.md for the wire protocol
+ * and handshake state machine this ports into the kernel.
  *
  * Scope note (MT-158113): this is the driver only. The EVK-side test
  * framework (MT-158682) is a separate ticket -- the userspace interface
