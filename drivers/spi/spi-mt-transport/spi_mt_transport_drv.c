@@ -113,7 +113,23 @@ struct mt_transport_priv {
 	 * tx_queued_count + (tx_in_flight_idx >= 0 ? 1 : 0) < DEPTH.
 	 */
 	unsigned int tx_queued_count;
-	int tx_in_flight_idx; /* -1 if nothing submitted yet */
+	int tx_in_flight_idx; /* Set on every successful spiTransportSend(),
+				* but never cleared back to -1 -- the core's
+				* public API has no TX-completion signal to
+				* clear it on (tracked as MT-158925 item 1),
+				* so this permanently costs one slot of room
+				* in mt_transport_tx_room_locked() from the
+				* first successful send onward. Not a
+				* correctness bug (no data loss, no crash --
+				* just DEPTH-1 usable slots instead of DEPTH),
+				* and not fixable here without the core API
+				* change MT-158925 requests; a driver-side
+				* guess (e.g. a timeout) would reintroduce
+				* the exact anti-pattern that ticket already
+				* flags as having cost ~200x throughput
+				* previously. Found by Copilot's PR #46
+				* review.
+				*/
 	wait_queue_head_t tx_free_wq;
 
 	/* Link-wide event counters -- mirrors the STM32 Client harness's
