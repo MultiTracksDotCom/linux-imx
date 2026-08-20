@@ -712,12 +712,27 @@ static int mt_transport_probe(struct spi_device *spi)
 	priv->tick_thread = kthread_run(mt_transport_tick_thread_fn, priv, "%s-tick", DRIVER_NAME);
 	if (IS_ERR(priv->tick_thread)) {
 		ret = PTR_ERR(priv->tick_thread);
+		/* The NRDY IRQ may already be live at this point (it's
+		 * requested earlier in this function) -- unlike devm_kzalloc,
+		 * kref_put() below can free priv's memory (including the
+		 * embedded hw_ctx the IRQ handler dereferences) synchronously,
+		 * right now, not deferred to the same devm unwind pass that
+		 * would otherwise free the IRQ first. Must free it explicitly
+		 * before dropping the last reference, same as
+		 * mt_transport_remove() does. Found by Copilot's PR #46
+		 * review (on the two later error paths below; this one has
+		 * the identical bug since the IRQ is requested even earlier).
+		 */
+		if (priv->nrdy_irq_requested)
+			devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
 		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, ret, "failed to start tick thread\n");
 	}
 
 	if (spiTransportStart(priv->htransport) != eSpiTransportErrorNone) {
 		kthread_stop(priv->tick_thread);
+		if (priv->nrdy_irq_requested)
+			devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
 		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, -EINVAL, "spiTransportStart failed\n");
 	}
@@ -740,6 +755,8 @@ static int mt_transport_probe(struct spi_device *spi)
 		 */
 		kthread_stop(priv->tick_thread);
 		spiTransportStop(priv->htransport);
+		if (priv->nrdy_irq_requested)
+			devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
 		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, ret, "misc_register failed\n");
 	}
