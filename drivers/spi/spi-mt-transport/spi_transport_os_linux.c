@@ -99,9 +99,23 @@ static void mt_os_critical_exit(void *pContext)
 static void mt_os_log(void *pContext, const char *pFormat, va_list args)
 {
 	struct mt_transport_os_ctx *ctx = pContext;
-	struct va_format vaf = { .fmt = pFormat, .va = &args };
+	va_list args_copy;
+	struct va_format vaf;
+
+	/* On architectures where va_list is an array type, &args here would
+	 * point at the local (already pointer-decayed) parameter rather than
+	 * a real va_list object, breaking %pV's va_arg()-based consumption --
+	 * va_copy() into a genuinely local va_list is the portable way to
+	 * get something &-able regardless of the platform's va_list
+	 * representation. Found by Copilot's PR #46 review.
+	 */
+	va_copy(args_copy, args);
+	vaf.fmt = pFormat;
+	vaf.va = &args_copy;
 
 	dev_dbg(ctx->dev, "%pV", &vaf);
+
+	va_end(args_copy);
 }
 
 int mt_transport_os_linux_init(struct mt_transport_os_ctx *ctx, struct device *dev,
