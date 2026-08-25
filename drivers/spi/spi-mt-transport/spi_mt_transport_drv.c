@@ -271,7 +271,19 @@ static void mt_transport_rx_callback(void *pContext, uint8_t channel, const uint
 
 static void mt_transport_event_callback(void *pContext, teSpiTransportEvent eEvent)
 {
-	struct mt_transport_priv *priv = pContext;
+	/* pContext is the same struct mt_transport_channel* passed to
+	 * spiTransportRegisterChannel() for both callbacks on this channel
+	 * (see mt_transport_probe()) -- events are link-level, not
+	 * per-channel, so derive priv from chan rather than assuming
+	 * pContext already IS priv. Passing chan straight through as
+	 * priv here (both are the first-member-is-a-pointer shape) used to
+	 * silently reinterpret chan's own fields as priv's, corrupting
+	 * priv->dev into a garbage pointer -- confirmed on hardware as a
+	 * NULL-deref Oops in __dev_printk() the first time this callback
+	 * fired.
+	 */
+	struct mt_transport_channel *chan = pContext;
+	struct mt_transport_priv *priv    = chan->priv;
 
 	switch (eEvent) {
 	case eSpiTransportEventConnected:
