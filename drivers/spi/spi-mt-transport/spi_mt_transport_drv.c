@@ -16,9 +16,12 @@
  *
  * Scope note (MT-158113): this is the driver only. The EVK-side test
  * framework (MT-158682) is a separate ticket -- the userspace interface
- * below (misc device + a small TX ring, see mt_transport_tx_service())
- * is still a placeholder ahead of MT-158682's real design: single
- * hardcoded channel, single in-flight RX message, no ioctl/config surface.
+ * below (one misc device per channel + a small per-channel TX ring, see
+ * mt_transport_tx_service()) is still a placeholder ahead of a real config
+ * surface: exactly two hardcoded channels (1: Transport Services, 2:
+ * Property Model -- see firmware-common/mt_ipc_fbs/docs/ChannelMapping.md,
+ * MT-148208), one misc device per channel, single in-flight RX message per
+ * channel, no ioctl/config surface.
  */
 
 #include <linux/module.h>
@@ -46,36 +49,45 @@
 #include "spi_transport_hw_linux.h"
 
 #define DRIVER_NAME "spi-mt-transport"
-#define MT_TRANSPORT_CHANNEL 1
 #define MT_TRANSPORT_TX_QUEUE_DEPTH 10
+
+/* Exactly two channels, per firmware-common/mt_ipc_fbs/docs/ChannelMapping.md
+ * (MT-148208): 1 = Transport Services, 2 = Property Model. Deliberately not
+ * a general N-channel design -- see this file's header. Channel index 0's
+ * misc device name/number are unchanged from the original single-channel
+ * driver, for backward compatibility with existing tools/scripts.
+ */
+#define MT_TRANSPORT_NUM_CHANNELS 2
+#define MT_TRANSPORT_CHANNEL_1 1
+#define MT_TRANSPORT_CHANNEL_2 2
 
 struct mt_transport_tx_slot {
 	uint8_t buf[SPI_TRANSPORT_CHANNEL_MESSAGE_MAX];
 	uint16_t len;
 };
 
-struct mt_transport_priv {
-	struct spi_device *spi;
-	struct device *dev;
+struct mt_transport_priv;
 
-	struct gpio_desc *nss_gpiod;
-	struct gpio_desc *nrdy_gpiod;
-	int nrdy_irq;
-	bool nrdy_irq_requested; /* only true once devm_request_threaded_irq()
-				   * actually succeeded -- see mt_transport_remove().
-				   */
-
-	trSpiTransportOs os;
-	trSpiTransportHw hw;
-	struct mt_transport_os_ctx os_ctx;
-	struct mt_transport_hw_ctx hw_ctx;
-	thSpiTransport htransport;
-
-	struct task_struct *tick_thread;
+/* Everything that used to be single-instance state directly in struct
+ * mt_transport_priv but is actually per-channel -- split out here so a
+ * second channel (Property Model, MT-148208) can be added without
+ * duplicating the whole driver. See struct mt_transport_priv's own comment
+ * for what stays link-level instead of moving here.
+ */
+struct mt_transport_channel {
+	struct mt_transport_priv *priv; /* back-pointer -- needed for the
+					  * shared removed/refcount/htransport
+					  * checks in the open/release/read/
+					  * write/poll functions below, which
+					  * used to reach priv directly via
+					  * container_of() on a single shared
+					  * misc device.
+					  */
+	uint8_t channel_num;
 
 	/* Minimal placeholder userspace interface -- MT-158682 owns the real
-	 * design. Single hardcoded channel, single in-flight RX message,
-	 * blocking read()/write(), best-effort poll().
+	 * design. Single hardcoded channel per device, single in-flight RX
+	 * message, blocking read()/write(), best-effort poll().
 	 */
 	struct miscdevice misc;
 	wait_queue_head_t rx_wq;
@@ -132,6 +144,44 @@ struct mt_transport_priv {
 				*/
 	wait_queue_head_t tx_free_wq;
 
+	atomic_t available; /* 1 = no fd currently open on this channel's
+			      * device, 0 = one is -- enforces single-open
+			      * semantics per channel, see
+			      * mt_transport_misc_open(). This also closes
+			      * the concurrent-reader race Copilot's review
+			      * separately flagged in
+			      * mt_transport_misc_read(): with at most one
+			      * open fd per channel, there is only ever one
+			      * reader on that channel.
+			      */
+};
+
+struct mt_transport_priv {
+	struct spi_device *spi;
+	struct device *dev;
+
+	struct gpio_desc *nss_gpiod;
+	struct gpio_desc *nrdy_gpiod;
+	int nrdy_irq;
+	bool nrdy_irq_requested; /* only true once devm_request_threaded_irq()
+				   * actually succeeded -- see mt_transport_remove().
+				   */
+
+	trSpiTransportOs os;
+	trSpiTransportHw hw;
+	struct mt_transport_os_ctx os_ctx;
+	struct mt_transport_hw_ctx hw_ctx;
+	thSpiTransport htransport;
+
+	struct task_struct *tick_thread;
+
+	/* Two channels, per firmware-common/mt_ipc_fbs/docs/ChannelMapping.md
+	 * (MT-148208): index 0 = Transport Services (channel 1, the
+	 * original single-channel device, unchanged name/number), index 1 =
+	 * Property Model (channel 2, new). See struct mt_transport_channel.
+	 */
+	struct mt_transport_channel channels[MT_TRANSPORT_NUM_CHANNELS];
+
 	/* Link-wide event counters -- mirrors the STM32 Client harness's
 	 * [DBG] conn=/disc=/hdrCrc=/payCrc=/seq=/dmaFail=/dmaTo= naming
 	 * (firmware-common/spi-transport/test/stm32-disco/app/, in the
@@ -143,7 +193,9 @@ struct mt_transport_priv {
 	 * connect/disconnect cycles and dozens of DMA-failure injections
 	 * during hardware bring-up (MT-158113). atomic_t: incremented from
 	 * the tick thread (mt_transport_event_callback(), single-threaded),
-	 * read from arbitrary userspace context via sysfs.
+	 * read from arbitrary userspace context via sysfs. Link-level, not
+	 * per-channel -- connect/disconnect/CRC/DMA events happen to the
+	 * physical link, not to one channel of it.
 	 */
 	atomic_t evt_connected;
 	atomic_t evt_disconnected;
@@ -154,23 +206,15 @@ struct mt_transport_priv {
 	atomic_t evt_dma_timeout;
 
 	/* priv is kzalloc'd, not devm_kzalloc'd (see mt_transport_probe()):
-	 * the embedded miscdevice can outlive the SPI device across an
-	 * unbind if userspace still holds /dev/mt_spi_transport open, so
+	 * the embedded miscdevices can outlive the SPI device across an
+	 * unbind if userspace still holds a channel's device open, so
 	 * something other than devm has to own freeing this memory --
 	 * kref does, with one reference held by the driver instance itself
-	 * (dropped in mt_transport_remove()) and one more per open fd
-	 * (mt_transport_misc_open()/_release()). Found by Copilot's PR #46
-	 * review (miscdevice/priv lifetime UAF).
+	 * (dropped in mt_transport_remove()) and one more per open fd, on
+	 * either channel (mt_transport_misc_open()/_release()). Found by
+	 * Copilot's PR #46 review.
 	 */
 	struct kref refcount;
-	atomic_t available; /* 1 = no fd currently open, 0 = one is --
-			      * enforces single-open semantics, see
-			      * mt_transport_misc_open(). This also closes
-			      * the concurrent-reader race Copilot's review
-			      * separately flagged in
-			      * mt_transport_misc_read(): with at most one
-			      * open fd, there is only ever one reader.
-			      */
 	bool removed; /* true once mt_transport_remove() has torn down the
 		       * transport core/tick thread -- read()/write() must
 		       * bail out with -ENODEV rather than touching
@@ -194,18 +238,22 @@ static void mt_transport_tick_notify(void *pNotifyCtx)
 static void mt_transport_rx_callback(void *pContext, uint8_t channel, const uint8_t *pBuffer,
 				      uint16_t length, uint8_t flags)
 {
-	struct mt_transport_priv *priv = pContext;
+	struct mt_transport_channel *chan = pContext;
 	unsigned long irqflags;
 
 	(void)flags;
-	if (channel != MT_TRANSPORT_CHANNEL)
-		return;
-	if (length > sizeof(priv->rx_buf))
-		length = sizeof(priv->rx_buf);
+	/* pContext already identifies which channel this is -- each channel
+	 * is registered with its own struct mt_transport_channel* as
+	 * context (see mt_transport_probe()), so no channel-number branch
+	 * is needed here.
+	 */
+	(void)channel;
+	if (length > sizeof(chan->rx_buf))
+		length = sizeof(chan->rx_buf);
 
-	spin_lock_irqsave(&priv->rx_lock, irqflags);
-	memcpy(priv->rx_buf, pBuffer, length);
-	priv->rx_len = length;
+	spin_lock_irqsave(&chan->rx_lock, irqflags);
+	memcpy(chan->rx_buf, pBuffer, length);
+	chan->rx_len = length;
 	/* WRITE_ONCE() pairs with the unlocked READ_ONCE() reads of rx_valid
 	 * in mt_transport_misc_poll() and the wait_event_interruptible()
 	 * condition below -- rx_buf/rx_len are only ever touched under
@@ -215,10 +263,10 @@ static void mt_transport_rx_callback(void *pContext, uint8_t channel, const uint
 	 * ordering -- this is about being explicit for readers/tooling like
 	 * KCSAN, not fixing an actual race).
 	 */
-	WRITE_ONCE(priv->rx_valid, true);
-	spin_unlock_irqrestore(&priv->rx_lock, irqflags);
+	WRITE_ONCE(chan->rx_valid, true);
+	spin_unlock_irqrestore(&chan->rx_lock, irqflags);
 
-	wake_up_interruptible(&priv->rx_wq);
+	wake_up_interruptible(&chan->rx_wq);
 }
 
 static void mt_transport_event_callback(void *pContext, teSpiTransportEvent eEvent)
@@ -265,8 +313,8 @@ static void mt_transport_event_callback(void *pContext, teSpiTransportEvent eEve
  * success return proves the *previous* in-flight slot (if any) is now
  * done -- the core only accepts a new send once the last one's final
  * chunk is confirmed -- so that previous slot is freed right here, not
- * after a guessed timeout. Called once per tick thread iteration; a Busy
- * return just means retry next tick, no state changes.
+ * after a guessed timeout. Called once per channel per tick thread
+ * iteration; a Busy return just means retry next tick, no state changes.
  *
  * Gates on tx_queued_count, not "is anything occupied at all": an earlier
  * version checked the combined queued+in-flight total, which let tx_head
@@ -277,43 +325,45 @@ static void mt_transport_event_callback(void *pContext, teSpiTransportEvent eEve
  * count separately from "is one slot in flight" makes "is there anything
  * NEW to submit" the only thing this check needs to answer.
  */
-static void mt_transport_tx_service(struct mt_transport_priv *priv)
+static void mt_transport_tx_service(struct mt_transport_channel *chan)
 {
 	unsigned long flags;
 	unsigned int idx;
 	uint16_t len;
 	teSpiTransportError err;
 
-	spin_lock_irqsave(&priv->tx_lock, flags);
-	if (priv->tx_queued_count == 0) {
-		spin_unlock_irqrestore(&priv->tx_lock, flags);
+	spin_lock_irqsave(&chan->tx_lock, flags);
+	if (chan->tx_queued_count == 0) {
+		spin_unlock_irqrestore(&chan->tx_lock, flags);
 		return;
 	}
-	idx = priv->tx_head;
-	len = priv->tx_slots[idx].len;
-	spin_unlock_irqrestore(&priv->tx_lock, flags);
+	idx = chan->tx_head;
+	len = chan->tx_slots[idx].len;
+	spin_unlock_irqrestore(&chan->tx_lock, flags);
 
-	err = spiTransportSend(priv->htransport, MT_TRANSPORT_CHANNEL, priv->tx_slots[idx].buf, len,
-				true);
+	err = spiTransportSend(chan->priv->htransport, chan->channel_num, chan->tx_slots[idx].buf,
+				len, true);
 	if (err != eSpiTransportErrorNone)
 		return;
 
-	spin_lock_irqsave(&priv->tx_lock, flags);
-	priv->tx_queued_count--;
-	priv->tx_in_flight_idx = idx;
-	priv->tx_head = (priv->tx_head + 1) % MT_TRANSPORT_TX_QUEUE_DEPTH;
-	spin_unlock_irqrestore(&priv->tx_lock, flags);
-	wake_up_interruptible(&priv->tx_free_wq);
+	spin_lock_irqsave(&chan->tx_lock, flags);
+	chan->tx_queued_count--;
+	chan->tx_in_flight_idx = idx;
+	chan->tx_head = (chan->tx_head + 1) % MT_TRANSPORT_TX_QUEUE_DEPTH;
+	spin_unlock_irqrestore(&chan->tx_lock, flags);
+	wake_up_interruptible(&chan->tx_free_wq);
 }
 
 static int mt_transport_tick_thread_fn(void *data)
 {
 	struct mt_transport_priv *priv = data;
+	int i;
 
 	while (!kthread_should_stop()) {
 		priv->os.pTaskNotifyWait(priv->os.pContext, 2);
 		spiTransportTick(priv->htransport);
-		mt_transport_tx_service(priv);
+		for (i = 0; i < MT_TRANSPORT_NUM_CHANNELS; i++)
+			mt_transport_tx_service(&priv->channels[i]);
 	}
 	return 0;
 }
@@ -330,15 +380,16 @@ static void mt_transport_priv_release(struct kref *kref)
 static int mt_transport_misc_open(struct inode *inode, struct file *filp)
 {
 	struct miscdevice *misc = filp->private_data;
-	struct mt_transport_priv *priv = container_of(misc, struct mt_transport_priv, misc);
+	struct mt_transport_channel *chan = container_of(misc, struct mt_transport_channel, misc);
+	struct mt_transport_priv *priv = chan->priv;
 
 	(void)inode;
 
 	if (READ_ONCE(priv->removed))
 		return -ENODEV;
 
-	if (!atomic_dec_and_test(&priv->available)) {
-		atomic_inc(&priv->available);
+	if (!atomic_dec_and_test(&chan->available)) {
+		atomic_inc(&chan->available);
 		return -EBUSY;
 	}
 
@@ -349,11 +400,12 @@ static int mt_transport_misc_open(struct inode *inode, struct file *filp)
 static int mt_transport_misc_release(struct inode *inode, struct file *filp)
 {
 	struct miscdevice *misc = filp->private_data;
-	struct mt_transport_priv *priv = container_of(misc, struct mt_transport_priv, misc);
+	struct mt_transport_channel *chan = container_of(misc, struct mt_transport_channel, misc);
+	struct mt_transport_priv *priv = chan->priv;
 
 	(void)inode;
 
-	atomic_inc(&priv->available);
+	atomic_inc(&chan->available);
 	kref_put(&priv->refcount, mt_transport_priv_release);
 	return 0;
 }
@@ -362,7 +414,8 @@ static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_
 				       loff_t *ppos)
 {
 	struct miscdevice *misc = filp->private_data;
-	struct mt_transport_priv *priv = container_of(misc, struct mt_transport_priv, misc);
+	struct mt_transport_channel *chan = container_of(misc, struct mt_transport_channel, misc);
+	struct mt_transport_priv *priv = chan->priv;
 	uint8_t scratch[SPI_TRANSPORT_CHANNEL_MESSAGE_MAX];
 	unsigned long irqflags;
 	uint16_t len;
@@ -380,12 +433,12 @@ static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_
 		return -ENODEV;
 
 	if (filp->f_flags & O_NONBLOCK) {
-		spin_lock_irqsave(&priv->rx_lock, irqflags);
-		if (!priv->rx_valid) {
-			spin_unlock_irqrestore(&priv->rx_lock, irqflags);
+		spin_lock_irqsave(&chan->rx_lock, irqflags);
+		if (!chan->rx_valid) {
+			spin_unlock_irqrestore(&chan->rx_lock, irqflags);
 			return -EAGAIN;
 		}
-		spin_unlock_irqrestore(&priv->rx_lock, irqflags);
+		spin_unlock_irqrestore(&chan->rx_lock, irqflags);
 	} else {
 		/* removed is included in the wait condition (not just checked
 		 * up front) so a reader already blocked here when
@@ -394,8 +447,8 @@ static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_
 		 * setting removed for exactly this reason. Found by
 		 * Copilot's PR #46 review.
 		 */
-		ret = wait_event_interruptible(priv->rx_wq,
-						READ_ONCE(priv->rx_valid) || READ_ONCE(priv->removed));
+		ret = wait_event_interruptible(chan->rx_wq,
+						READ_ONCE(chan->rx_valid) || READ_ONCE(priv->removed));
 		if (ret)
 			return ret;
 		if (READ_ONCE(priv->removed))
@@ -410,13 +463,13 @@ static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_
 	 * consumes the buffered message rather than leaving it for retry,
 	 * a minor, acceptable behavior change for this placeholder interface.
 	 */
-	spin_lock_irqsave(&priv->rx_lock, irqflags);
-	len = priv->rx_len;
+	spin_lock_irqsave(&chan->rx_lock, irqflags);
+	len = chan->rx_len;
 	if (len > count)
 		len = count;
-	memcpy(scratch, priv->rx_buf, len);
-	WRITE_ONCE(priv->rx_valid, false);
-	spin_unlock_irqrestore(&priv->rx_lock, irqflags);
+	memcpy(scratch, chan->rx_buf, len);
+	WRITE_ONCE(chan->rx_valid, false);
+	spin_unlock_irqrestore(&chan->rx_lock, irqflags);
 
 	if (copy_to_user(buf, scratch, len))
 		return -EFAULT;
@@ -431,9 +484,9 @@ static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_
  * that slot is still reserved even though it doesn't count toward
  * tx_queued_count.
  */
-static inline bool mt_transport_tx_room_locked(struct mt_transport_priv *priv)
+static inline bool mt_transport_tx_room_locked(struct mt_transport_channel *chan)
 {
-	unsigned int occupied = priv->tx_queued_count + (priv->tx_in_flight_idx >= 0 ? 1 : 0);
+	unsigned int occupied = chan->tx_queued_count + (chan->tx_in_flight_idx >= 0 ? 1 : 0);
 
 	return occupied < MT_TRANSPORT_TX_QUEUE_DEPTH;
 }
@@ -448,14 +501,14 @@ static inline bool mt_transport_tx_room_locked(struct mt_transport_priv *priv)
  * follows (the enqueue), otherwise a second writer could take the
  * now-free slot in the gap between checking and re-locking.
  */
-static bool mt_transport_tx_has_room(struct mt_transport_priv *priv)
+static bool mt_transport_tx_has_room(struct mt_transport_channel *chan)
 {
 	unsigned long flags;
 	bool room;
 
-	spin_lock_irqsave(&priv->tx_lock, flags);
-	room = mt_transport_tx_room_locked(priv);
-	spin_unlock_irqrestore(&priv->tx_lock, flags);
+	spin_lock_irqsave(&chan->tx_lock, flags);
+	room = mt_transport_tx_room_locked(chan);
+	spin_unlock_irqrestore(&chan->tx_lock, flags);
 	return room;
 }
 
@@ -463,7 +516,8 @@ static ssize_t mt_transport_misc_write(struct file *filp, const char __user *buf
 					loff_t *ppos)
 {
 	struct miscdevice *misc = filp->private_data;
-	struct mt_transport_priv *priv = container_of(misc, struct mt_transport_priv, misc);
+	struct mt_transport_channel *chan = container_of(misc, struct mt_transport_channel, misc);
+	struct mt_transport_priv *priv = chan->priv;
 	uint8_t scratch[SPI_TRANSPORT_CHANNEL_MESSAGE_MAX];
 	unsigned long flags;
 	unsigned int idx;
@@ -487,10 +541,10 @@ static ssize_t mt_transport_misc_write(struct file *filp, const char __user *buf
 		return -EFAULT;
 
 	for (;;) {
-		spin_lock_irqsave(&priv->tx_lock, flags);
-		if (mt_transport_tx_room_locked(priv))
+		spin_lock_irqsave(&chan->tx_lock, flags);
+		if (mt_transport_tx_room_locked(chan))
 			break;
-		spin_unlock_irqrestore(&priv->tx_lock, flags);
+		spin_unlock_irqrestore(&chan->tx_lock, flags);
 
 		if (filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
@@ -500,20 +554,20 @@ static ssize_t mt_transport_misc_write(struct file *filp, const char __user *buf
 		 * forever; remove() wakes tx_free_wq right after setting
 		 * removed. Found by Copilot's PR #46 review.
 		 */
-		ret = wait_event_interruptible(priv->tx_free_wq,
-						mt_transport_tx_has_room(priv) || READ_ONCE(priv->removed));
+		ret = wait_event_interruptible(chan->tx_free_wq,
+						mt_transport_tx_has_room(chan) || READ_ONCE(priv->removed));
 		if (ret)
 			return ret;
 		if (READ_ONCE(priv->removed))
 			return -ENODEV;
 	}
 
-	idx = priv->tx_tail;
-	memcpy(priv->tx_slots[idx].buf, scratch, len);
-	priv->tx_slots[idx].len = len;
-	priv->tx_tail = (priv->tx_tail + 1) % MT_TRANSPORT_TX_QUEUE_DEPTH;
-	priv->tx_queued_count++;
-	spin_unlock_irqrestore(&priv->tx_lock, flags);
+	idx = chan->tx_tail;
+	memcpy(chan->tx_slots[idx].buf, scratch, len);
+	chan->tx_slots[idx].len = len;
+	chan->tx_tail = (chan->tx_tail + 1) % MT_TRANSPORT_TX_QUEUE_DEPTH;
+	chan->tx_queued_count++;
+	spin_unlock_irqrestore(&chan->tx_lock, flags);
 
 	/* Kick the tick thread so mt_transport_tx_service() attempts this
 	 * send right away instead of waiting up to its ~2ms poll interval.
@@ -526,10 +580,11 @@ static ssize_t mt_transport_misc_write(struct file *filp, const char __user *buf
 static __poll_t mt_transport_misc_poll(struct file *filp, poll_table *wait)
 {
 	struct miscdevice *misc = filp->private_data;
-	struct mt_transport_priv *priv = container_of(misc, struct mt_transport_priv, misc);
+	struct mt_transport_channel *chan = container_of(misc, struct mt_transport_channel, misc);
+	struct mt_transport_priv *priv = chan->priv;
 	__poll_t mask = 0;
 
-	poll_wait(filp, &priv->rx_wq, wait);
+	poll_wait(filp, &chan->rx_wq, wait);
 	/* Reported so an fd that outlives unbind can detect teardown via
 	 * poll() instead of only finding out on its next read()/write() --
 	 * rx_wq is woken on removal (see mt_transport_remove()), so this
@@ -538,7 +593,7 @@ static __poll_t mt_transport_misc_poll(struct file *filp, poll_table *wait)
 	 */
 	if (READ_ONCE(priv->removed))
 		return EPOLLHUP | EPOLLERR;
-	if (READ_ONCE(priv->rx_valid))
+	if (READ_ONCE(chan->rx_valid))
 		mask |= EPOLLIN | EPOLLRDNORM;
 	return mask;
 }
@@ -605,29 +660,49 @@ static int mt_transport_probe(struct spi_device *spi)
 	struct device *dev = &spi->dev;
 	struct mt_transport_priv *priv;
 	trSpiTransportConfig config;
+	static const uint8_t channel_nums[MT_TRANSPORT_NUM_CHANNELS] = {
+		MT_TRANSPORT_CHANNEL_1,
+		MT_TRANSPORT_CHANNEL_2,
+	};
+	/* Channel 1's name is unchanged from the original single-channel
+	 * driver -- every existing tool/script keeps working unmodified.
+	 * Channel 2 is new (MT-148208's Property Model).
+	 */
+	static const char *const channel_names[MT_TRANSPORT_NUM_CHANNELS] = {
+		"mt_spi_transport",
+		"mt_spi_transport_ch2",
+	};
 	int ret;
+	int i;
+	int started_misc = 0;
 
 	/* Plain kzalloc, not devm_kzalloc: see the refcount/available/removed
 	 * comment on struct mt_transport_priv -- this memory must be able to
-	 * outlive the SPI device's unbind if userspace still holds
-	 * /dev/mt_spi_transport open.
+	 * outlive the SPI device's unbind if userspace still holds a
+	 * channel's device open.
 	 */
 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
 
 	kref_init(&priv->refcount);
-	atomic_set(&priv->available, 1);
 
 	priv->spi = spi;
 	priv->dev = dev;
 	spi_set_drvdata(spi, priv);
 
-	init_waitqueue_head(&priv->rx_wq);
-	spin_lock_init(&priv->rx_lock);
-	spin_lock_init(&priv->tx_lock);
-	init_waitqueue_head(&priv->tx_free_wq);
-	priv->tx_in_flight_idx = -1;
+	for (i = 0; i < MT_TRANSPORT_NUM_CHANNELS; i++) {
+		struct mt_transport_channel *chan = &priv->channels[i];
+
+		chan->priv = priv;
+		chan->channel_num = channel_nums[i];
+		atomic_set(&chan->available, 1);
+		init_waitqueue_head(&chan->rx_wq);
+		spin_lock_init(&chan->rx_lock);
+		spin_lock_init(&chan->tx_lock);
+		init_waitqueue_head(&chan->tx_free_wq);
+		chan->tx_in_flight_idx = -1;
+	}
 
 	/* Custom "mt-nss"/"mt-nrdy" bindings, not the standard "cs-gpios" --
 	 * see spi_transport_hw_linux.c's file comment for why these must stay
@@ -664,12 +739,18 @@ static int mt_transport_probe(struct spi_device *spi)
 		return dev_err_probe(dev, -EINVAL, "spiTransportInit failed\n");
 	}
 
-	if (spiTransportRegisterChannel(priv->htransport, MT_TRANSPORT_CHANNEL,
-					 mt_transport_rx_callback, mt_transport_event_callback,
-					 priv)
-	    != eSpiTransportErrorNone) {
-		kref_put(&priv->refcount, mt_transport_priv_release);
-		return dev_err_probe(dev, -EINVAL, "spiTransportRegisterChannel failed\n");
+	for (i = 0; i < MT_TRANSPORT_NUM_CHANNELS; i++) {
+		struct mt_transport_channel *chan = &priv->channels[i];
+
+		if (spiTransportRegisterChannel(priv->htransport, chan->channel_num,
+						 mt_transport_rx_callback, mt_transport_event_callback,
+						 chan)
+		    != eSpiTransportErrorNone) {
+			kref_put(&priv->refcount, mt_transport_priv_release);
+			return dev_err_probe(dev, -EINVAL,
+					     "spiTransportRegisterChannel(%u) failed\n",
+					     chan->channel_num);
+		}
 	}
 
 	/* Optional latency optimization -- if the NRDY line has no usable
@@ -737,37 +818,44 @@ static int mt_transport_probe(struct spi_device *spi)
 		return dev_err_probe(dev, -EINVAL, "spiTransportStart failed\n");
 	}
 
-	/* Name hardcoded, not suffixed per-device (flagged by Copilot review --
-	 * see PR discussion): a second bound spi-mt-transport device would
-	 * collide here, but this specific hardware only ever binds one, and
-	 * changing the path breaks every existing script/tool this session
-	 * built against /dev/mt_spi_transport. Left as-is pending a decision;
-	 * see PR #785.
-	 */
-	priv->misc.minor = MISC_DYNAMIC_MINOR;
-	priv->misc.name = "mt_spi_transport";
-	priv->misc.fops = &mt_transport_misc_fops;
-	ret = misc_register(&priv->misc);
-	if (ret) {
-		/* kthread_stop() before spiTransportStop(): the tick thread
-		 * must not be able to call into the core after it's been
-		 * stopped (same ordering as mt_transport_remove() below).
-		 */
-		kthread_stop(priv->tick_thread);
-		spiTransportStop(priv->htransport);
-		if (priv->nrdy_irq_requested)
-			devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
-		kref_put(&priv->refcount, mt_transport_priv_release);
-		return dev_err_probe(dev, ret, "misc_register failed\n");
+	for (i = 0; i < MT_TRANSPORT_NUM_CHANNELS; i++) {
+		struct mt_transport_channel *chan = &priv->channels[i];
+
+		chan->misc.minor = MISC_DYNAMIC_MINOR;
+		chan->misc.name = channel_names[i];
+		chan->misc.fops = &mt_transport_misc_fops;
+		ret = misc_register(&chan->misc);
+		if (ret) {
+			int j;
+
+			/* Roll back any channel's misc device already
+			 * registered before this one failed -- otherwise a
+			 * second channel's registration failure would leak
+			 * the first channel's /dev node across this probe
+			 * failure.
+			 */
+			for (j = 0; j < started_misc; j++)
+				misc_deregister(&priv->channels[j].misc);
+			kthread_stop(priv->tick_thread);
+			spiTransportStop(priv->htransport);
+			if (priv->nrdy_irq_requested)
+				devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
+			kref_put(&priv->refcount, mt_transport_priv_release);
+			return dev_err_probe(dev, ret, "misc_register(%s) failed\n",
+					     channel_names[i]);
+		}
+		started_misc++;
 	}
 
-	dev_info(dev, "MultiTracks SPI transport driver probed (Host role)\n");
+	dev_info(dev, "MultiTracks SPI transport driver probed (Host role, %d channels)\n",
+		 MT_TRANSPORT_NUM_CHANNELS);
 	return 0;
 }
 
 static void mt_transport_remove(struct spi_device *spi)
 {
 	struct mt_transport_priv *priv = spi_get_drvdata(spi);
+	int i;
 
 	/* Set first, before anything else is torn down: any read()/write()
 	 * on an fd that outlived this unbind must bail out with -ENODEV
@@ -777,18 +865,20 @@ static void mt_transport_remove(struct spi_device *spi)
 	 * already gone. This is a fail-fast measure, not the memory-safety
 	 * fix itself -- priv's memory itself stays valid for as long as any
 	 * such fd remains open via the kref below (see struct
-	 * mt_transport_priv's refcount/available/removed comment). Found by
+	 * mt_transport_priv's refcount/removed comment). Found by
 	 * Copilot's PR #46 review.
 	 */
 	WRITE_ONCE(priv->removed, true);
 	/* Wake any reader/writer already blocked in wait_event_interruptible()
-	 * on rx_wq/tx_free_wq -- both now include removed in their wait
-	 * condition, but a waiter sleeping before this WRITE_ONCE() would
-	 * otherwise never re-check it and could hang forever across unbind.
-	 * Found by Copilot's PR #46 review.
+	 * on either channel's rx_wq/tx_free_wq -- both now include removed in
+	 * their wait condition, but a waiter sleeping before this
+	 * WRITE_ONCE() would otherwise never re-check it and could hang
+	 * forever across unbind. Found by Copilot's PR #46 review.
 	 */
-	wake_up_interruptible_all(&priv->rx_wq);
-	wake_up_interruptible_all(&priv->tx_free_wq);
+	for (i = 0; i < MT_TRANSPORT_NUM_CHANNELS; i++) {
+		wake_up_interruptible_all(&priv->channels[i].rx_wq);
+		wake_up_interruptible_all(&priv->channels[i].tx_free_wq);
+	}
 
 	/* Free the NRDY IRQ (if one was ever successfully requested) before
 	 * anything else: it's devm-managed, so it would otherwise only get
@@ -805,7 +895,8 @@ static void mt_transport_remove(struct spi_device *spi)
 	if (priv->nrdy_irq_requested)
 		devm_free_irq(priv->dev, priv->nrdy_irq, &priv->hw_ctx);
 
-	misc_deregister(&priv->misc);
+	for (i = 0; i < MT_TRANSPORT_NUM_CHANNELS; i++)
+		misc_deregister(&priv->channels[i].misc);
 	/* kthread_stop() blocks until the tick thread's loop actually exits,
 	 * guaranteeing no thread is still calling spiTransportTick()/
 	 * mt_transport_tx_service() by the time spiTransportStop() runs.
@@ -817,10 +908,10 @@ static void mt_transport_remove(struct spi_device *spi)
 	spiTransportStop(priv->htransport);
 
 	/* Drops the driver instance's own reference (taken via kref_init()
-	 * in probe()). If no fd is currently open, this is the last
-	 * reference and priv is freed right here -- same timing as the
-	 * devm-based lifetime this replaced. If userspace still holds
-	 * /dev/mt_spi_transport open, priv stays alive (kept by that fd's
+	 * in probe()). If no fd is currently open on either channel, this is
+	 * the last reference and priv is freed right here -- same timing as
+	 * the devm-based lifetime this replaced. If userspace still holds
+	 * either channel's device open, priv stays alive (kept by that fd's
 	 * own reference from mt_transport_misc_open()) until it's closed.
 	 */
 	kref_put(&priv->refcount, mt_transport_priv_release);
