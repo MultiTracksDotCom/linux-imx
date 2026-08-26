@@ -54,14 +54,24 @@ static void mt_hw_spi_complete(void *context)
 	struct mt_transport_hw_ctx *ctx = context;
 	uint16_t length = ctx->msg.status == 0 ? ctx->xfer.len : 0;
 
-	/* Signal "msg/xfer no longer referenced by the SPI core" before
-	 * notifying the core -- pNotify may wake the tick thread straight
-	 * into a new pTransferStart(), which gates on this same completion.
+	/* pOnTransferComplete() must run before transferComplete is signaled:
+	 * mt_hw_abort() waits on this same completion, and it runs on the
+	 * tick thread -- a different context than this SPI completion
+	 * callback. Signaling first would let an aborting/woken tick thread
+	 * proceed (and potentially call back into the core) while this
+	 * context is still inside pOnTransferComplete() mutating core state,
+	 * a concurrent unsynchronized access. Found by Copilot's PR #46
+	 * review.
 	 */
-	complete(&ctx->transferComplete);
-
 	if (ctx->pHw->pOnTransferComplete)
 		ctx->pHw->pOnTransferComplete(ctx->pHw->pCoreCtx, length);
+
+	/* Signal "msg/xfer no longer referenced by the SPI core, and the
+	 * core has already been notified" only now -- pNotify may wake the
+	 * tick thread straight into a new pTransferStart(), which gates on
+	 * this same completion, so it's still correctly ordered after.
+	 */
+	complete(&ctx->transferComplete);
 
 	if (ctx->pNotify)
 		ctx->pNotify(ctx->pNotifyCtx);
@@ -134,8 +144,20 @@ static void mt_hw_ready_assert(void *pContext, bool high)
 static bool mt_hw_ready_read(void *pContext)
 {
 	struct mt_transport_hw_ctx *ctx = pContext;
+	int val = gpiod_get_value_cansleep(ctx->nrdy_gpiod);
 
-	return gpiod_get_value_cansleep(ctx->nrdy_gpiod) ? true : false;
+	/* A negative errno (GPIO provider failure) must not fall through the
+	 * old bare ternary, which mapped any nonzero result -- errno included
+	 * -- to true. Fail closed instead: report not-ready rather than
+	 * risk clocking the peer on an invalid handshake. Found by Copilot's
+	 * PR #46 review.
+	 */
+	if (val < 0) {
+		dev_err_ratelimited(&ctx->spi->dev, "NRDY GPIO read failed: %d\n", val);
+		return false;
+	}
+
+	return val ? true : false;
 }
 
 /*
@@ -225,10 +247,22 @@ void mt_transport_hw_linux_set_notify(struct mt_transport_hw_ctx *ctx,
 irqreturn_t mt_transport_hw_linux_nrdy_irq(int irq, void *dev_id)
 {
 	struct mt_transport_hw_ctx *ctx = dev_id;
-	bool high = gpiod_get_value_cansleep(ctx->nrdy_gpiod) ? true : false;
+	int val = gpiod_get_value_cansleep(ctx->nrdy_gpiod);
+
+	/* Same errno-to-true bug as mt_hw_ready_read(), but here a
+	 * misreported level would advance the Host state machine on a bad
+	 * handshake -- skip the event entirely on error instead of guessing
+	 * a level; the tick thread's own pReadyRead() polling remains
+	 * available as a fallback. Found by Copilot's PR #46 review.
+	 */
+	if (val < 0) {
+		dev_err_ratelimited(&ctx->spi->dev, "NRDY GPIO read failed in IRQ handler: %d\n",
+				    val);
+		return IRQ_HANDLED;
+	}
 
 	if (ctx->pHw->pOnReadyEvent)
-		ctx->pHw->pOnReadyEvent(ctx->pHw->pCoreCtx, high);
+		ctx->pHw->pOnReadyEvent(ctx->pHw->pCoreCtx, val ? true : false);
 
 	if (ctx->pNotify)
 		ctx->pNotify(ctx->pNotifyCtx);

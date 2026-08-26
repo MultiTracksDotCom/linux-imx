@@ -823,9 +823,16 @@ static int mt_transport_probe(struct spi_device *spi)
 	}
 
 	if (spiTransportStart(priv->htransport) != eSpiTransportErrorNone) {
-		kthread_stop(priv->tick_thread);
+		/* Free the IRQ before stopping the tick thread -- see
+		 * mt_transport_remove()'s comment: the threaded handler can
+		 * still fire and call pOnReadyEvent() into a transport that's
+		 * mid-teardown otherwise. Found by Copilot's PR #46 review
+		 * (flagged on the misc_register() failure path below; this
+		 * path has the identical ordering bug).
+		 */
 		if (priv->nrdy_irq_requested)
 			devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
+		kthread_stop(priv->tick_thread);
 		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, -EINVAL, "spiTransportStart failed\n");
 	}
@@ -840,6 +847,14 @@ static int mt_transport_probe(struct spi_device *spi)
 		if (ret) {
 			int j;
 
+			/* Free the IRQ first, matching mt_transport_remove()'s
+			 * ordering -- the threaded handler can still fire and
+			 * call pOnReadyEvent() into a transport that's
+			 * mid-teardown otherwise. Found by Copilot's PR #46
+			 * review.
+			 */
+			if (priv->nrdy_irq_requested)
+				devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
 			/* Roll back any channel's misc device already
 			 * registered before this one failed -- otherwise a
 			 * second channel's registration failure would leak
@@ -850,8 +865,6 @@ static int mt_transport_probe(struct spi_device *spi)
 				misc_deregister(&priv->channels[j].misc);
 			kthread_stop(priv->tick_thread);
 			spiTransportStop(priv->htransport);
-			if (priv->nrdy_irq_requested)
-				devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
 			kref_put(&priv->refcount, mt_transport_priv_release);
 			return dev_err_probe(dev, ret, "misc_register(%s) failed\n",
 					     channel_names[i]);
