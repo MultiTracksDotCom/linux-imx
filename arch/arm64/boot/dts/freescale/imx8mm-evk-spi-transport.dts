@@ -8,8 +8,9 @@
 // firmware/firmware-common/spi-transport/docs/ProtocolSpec.md for the wire
 // protocol and NSS/NRDY handshake this binds to real hardware.
 //
-// NSS/NRDY are bound here as driver-private "mt-nss-gpios"/"mt-nrdy-gpios"
-// properties, NOT the standard "cs-gpios" -- the transport protocol holds
+// NSS/NRDY are bound here as driver-private "multitracks,nss-gpios"/
+// "multitracks,nrdy-gpios" properties, NOT the standard "cs-gpios" -- the
+// transport protocol holds
 // NSS low continuously across a multi-step request/ack/clock/complete
 // cycle, not just one SPI transfer, so the driver must own and drive it
 // directly rather than let the SPI core auto-toggle it per-message. Both
@@ -33,8 +34,8 @@
 		reg = <0>;
 		spi-max-frequency = <500000>; /* matches mt-connect.dts; revisit once link timing is measured */
 
-		mt-nss-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
-		mt-nrdy-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
+		multitracks,nss-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
+		multitracks,nrdy-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
 	};
 };
 

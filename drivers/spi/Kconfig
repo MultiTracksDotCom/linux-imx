@@ -1220,6 +1220,10 @@ config SPI_MT_TRANSPORT
 	# Copilot's PR #46 review.
 	depends on ARCH_MXC
 	depends on GPIOLIB
+	# Driver unconditionally registers dev_groups/DEVICE_ATTR_RO sysfs
+	# attributes and calls sysfs_emit() -- non-functional without SYSFS.
+	# Found by Copilot's PR #46 review.
+	depends on SYSFS
 	help
 	  Kernel Host-role port of the MultiTracks SPI transport protocol
 	  (see firmware repo firmware-common/spi-transport/) -- a framed,

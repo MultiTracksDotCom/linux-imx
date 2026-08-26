@@ -32,7 +32,7 @@ properties:
   reg:
     maxItems: 1
 
-  mt-nss-gpios:
+  multitracks,nss-gpios:
     maxItems: 1
     description:
       Host-driven NSS (transfer request) line, held low across the whole
@@ -41,18 +41,18 @@ properties:
       value always equals the literal pin level (the protocol's own
       convention is "true = pin HIGH").
 
-  mt-nrdy-gpios:
+  multitracks,nrdy-gpios:
     maxItems: 1
     description:
       Client-driven NRDY (ready/ack) line, read by the Host. Same
-      GPIO_ACTIVE_HIGH convention as mt-nss-gpios.
+      GPIO_ACTIVE_HIGH convention as multitracks,nss-gpios.
 
 required:
   - compatible
   - reg
   - spi-max-frequency
-  - mt-nss-gpios
-  - mt-nrdy-gpios
+  - multitracks,nss-gpios
+  - multitracks,nrdy-gpios
 
 unevaluatedProperties: false
 
@@ -68,8 +68,8 @@ examples:
             reg = <0>;
             spi-max-frequency = <500000>;
 
-            mt-nss-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
-            mt-nrdy-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
+            multitracks,nss-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
+            multitracks,nrdy-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
         };
     };
 

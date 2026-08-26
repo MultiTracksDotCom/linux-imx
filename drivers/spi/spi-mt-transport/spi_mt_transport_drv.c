@@ -444,14 +444,46 @@ static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_
 	if (READ_ONCE(priv->removed))
 		return -ENODEV;
 
-	if (filp->f_flags & O_NONBLOCK) {
+	/* The single-open check in mt_transport_misc_open() only prevents a
+	 * second fd -- it does nothing to stop two threads issuing read() on
+	 * the *same* fd concurrently, which POSIX permits. Both could
+	 * observe rx_valid true (via the O_NONBLOCK check below, or both
+	 * waking from the same wait_event_interruptible()) and race into the
+	 * consume block; without rechecking under the lock immediately before
+	 * consuming, the loser would copy the winner's already-cleared
+	 * rx_buf/rx_len as if it were a fresh message. Looping back to
+	 * wait/retry instead of falling through fixes this: only the thread
+	 * that actually observes rx_valid true *under rx_lock* consumes it,
+	 * and rx_valid is cleared in that same critical section. Found by
+	 * Copilot's PR #46 review.
+	 */
+	for (;;) {
 		spin_lock_irqsave(&chan->rx_lock, irqflags);
-		if (!chan->rx_valid) {
+		if (chan->rx_valid) {
+			/* Snapshot into a local buffer under the lock, then
+			 * copy_to_user() outside it -- copy_to_user() can
+			 * fault/sleep, which is illegal while holding a
+			 * spinlock. rx_valid is cleared here too (not after
+			 * the copy) since it's rx_lock-protected state, same
+			 * as rx_buf -- a failing copy_to_user (a broken
+			 * caller's bad pointer) now consumes the buffered
+			 * message rather than leaving it for retry, a minor,
+			 * acceptable behavior change for this placeholder
+			 * interface.
+			 */
+			len = chan->rx_len;
+			if (len > count)
+				len = count;
+			memcpy(scratch, chan->rx_buf, len);
+			WRITE_ONCE(chan->rx_valid, false);
 			spin_unlock_irqrestore(&chan->rx_lock, irqflags);
-			return -EAGAIN;
+			break;
 		}
 		spin_unlock_irqrestore(&chan->rx_lock, irqflags);
-	} else {
+
+		if (filp->f_flags & O_NONBLOCK)
+			return -EAGAIN;
+
 		/* removed is included in the wait condition (not just checked
 		 * up front) so a reader already blocked here when
 		 * mt_transport_remove() runs actually wakes up instead of
@@ -466,22 +498,6 @@ static ssize_t mt_transport_misc_read(struct file *filp, char __user *buf, size_
 		if (READ_ONCE(priv->removed))
 			return -ENODEV;
 	}
-
-	/* Snapshot into a local buffer under the lock, then copy_to_user()
-	 * outside it -- copy_to_user() can fault/sleep, which is illegal
-	 * while holding a spinlock. rx_valid is cleared here too (not after
-	 * the copy) since it's rx_lock-protected state, same as rx_buf --
-	 * a failing copy_to_user (a broken caller's bad pointer) now
-	 * consumes the buffered message rather than leaving it for retry,
-	 * a minor, acceptable behavior change for this placeholder interface.
-	 */
-	spin_lock_irqsave(&chan->rx_lock, irqflags);
-	len = chan->rx_len;
-	if (len > count)
-		len = count;
-	memcpy(scratch, chan->rx_buf, len);
-	WRITE_ONCE(chan->rx_valid, false);
-	spin_unlock_irqrestore(&chan->rx_lock, irqflags);
 
 	if (copy_to_user(buf, scratch, len))
 		return -EFAULT;
@@ -617,6 +633,12 @@ static const struct file_operations mt_transport_misc_fops = {
 	.read = mt_transport_misc_read,
 	.write = mt_transport_misc_write,
 	.poll = mt_transport_misc_poll,
+	/* This device doesn't support offsets -- no_llseek is the in-tree
+	 * convention for that (e.g. drivers/spi/spidev.c), preventing
+	 * unexpected seek behavior on the default llseek. Found by Copilot's
+	 * PR #46 review.
+	 */
+	.llseek = no_llseek,
 };
 
 static ssize_t link_state_show(struct device *dev, struct device_attribute *attr, char *buf)
@@ -716,22 +738,29 @@ static int mt_transport_probe(struct spi_device *spi)
 		chan->tx_in_flight_idx = -1;
 	}
 
-	/* Custom "mt-nss"/"mt-nrdy" bindings, not the standard "cs-gpios" --
-	 * see spi_transport_hw_linux.c's file comment for why these must stay
-	 * outside the SPI core's own chip-select handling.
+	/* Custom "multitracks,nss"/"multitracks,nrdy" bindings, not the
+	 * standard "cs-gpios" -- see spi_transport_hw_linux.c's file comment
+	 * for why these must stay outside the SPI core's own chip-select
+	 * handling. Vendor-prefixed per the DT binding's own
+	 * multitracks,spi-transport.yaml (and the "multitracks" registry
+	 * entry in vendor-prefixes.yaml) -- devm_gpiod_get()'s con_id here
+	 * has the "-gpios" suffix implicitly appended to form the property
+	 * name it looks up, so "multitracks,nss" resolves to the
+	 * "multitracks,nss-gpios" DT property. Found by Copilot's PR #46
+	 * review.
 	 */
-	priv->nss_gpiod = devm_gpiod_get(dev, "mt-nss", GPIOD_OUT_HIGH);
+	priv->nss_gpiod = devm_gpiod_get(dev, "multitracks,nss", GPIOD_OUT_HIGH);
 	if (IS_ERR(priv->nss_gpiod)) {
 		ret = PTR_ERR(priv->nss_gpiod);
 		kref_put(&priv->refcount, mt_transport_priv_release);
-		return dev_err_probe(dev, ret, "failed to get mt-nss-gpios\n");
+		return dev_err_probe(dev, ret, "failed to get multitracks,nss-gpios\n");
 	}
 
-	priv->nrdy_gpiod = devm_gpiod_get(dev, "mt-nrdy", GPIOD_IN);
+	priv->nrdy_gpiod = devm_gpiod_get(dev, "multitracks,nrdy", GPIOD_IN);
 	if (IS_ERR(priv->nrdy_gpiod)) {
 		ret = PTR_ERR(priv->nrdy_gpiod);
 		kref_put(&priv->refcount, mt_transport_priv_release);
-		return dev_err_probe(dev, ret, "failed to get mt-nrdy-gpios\n");
+		return dev_err_probe(dev, ret, "failed to get multitracks,nrdy-gpios\n");
 	}
 
 	ret = mt_transport_os_linux_init(&priv->os_ctx, dev, &priv->os);
@@ -855,6 +884,20 @@ static int mt_transport_probe(struct spi_device *spi)
 			 */
 			if (priv->nrdy_irq_requested)
 				devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
+			/* An earlier channel's misc_register() already
+			 * succeeded, so userspace can already hold an fd on
+			 * it by the time a later channel's registration fails
+			 * here -- set removed and wake its wait queues first,
+			 * same as mt_transport_remove(), or a read()/write()
+			 * already blocked on that fd would sleep forever past
+			 * the misc_deregister() below. Found by Copilot's PR
+			 * #46 review.
+			 */
+			WRITE_ONCE(priv->removed, true);
+			for (j = 0; j < started_misc; j++) {
+				wake_up_interruptible_all(&priv->channels[j].rx_wq);
+				wake_up_interruptible_all(&priv->channels[j].tx_free_wq);
+			}
 			/* Roll back any channel's misc device already
 			 * registered before this one failed -- otherwise a
 			 * second channel's registration failure would leak

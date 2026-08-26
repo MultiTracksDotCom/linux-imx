@@ -29,8 +29,9 @@
  * span more than one spi_async() call in the Client-initiated case), not
  * just the duration of one transfer -- the SPI core's built-in cs-gpios
  * handling only ever asserts CS for a single spi_message. Both GPIOs are
- * requested via a driver-private "mt-nss-gpios"/"mt-nrdy-gpios" devicetree
- * binding (see spi_mt_transport_drv.c) rather than the standard "cs-gpios"
+ * requested via a driver-private "multitracks,nss-gpios"/
+ * "multitracks,nrdy-gpios" devicetree binding (see spi_mt_transport_drv.c)
+ * rather than the standard "cs-gpios"
  * property, specifically so the SPI core never learns about them and never
  * tries to toggle them itself. Both are declared GPIO_ACTIVE_HIGH in the
  * devicetree regardless of the physical wire's true active sense, so that
