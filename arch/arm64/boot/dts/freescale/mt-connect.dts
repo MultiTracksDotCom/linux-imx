@@ -508,16 +508,33 @@
 	status = "okay";
 };
 
+/* MT-159369: binds the MultiTracks SPI transport driver (Host role),
+ * porting the binding already hardware-validated on imx8mm-evk-spi-transport.dts
+ * (MT-158113) back to this production board -- same NSS/NRDY pins
+ * (GPIO5_IO13 / GPIO4_IO29, this board's own SPI2_NSS / SPI2_INT pin
+ * names, per the gpio5/gpio4 gpio-line-names above), same reasoning for
+ * multitracks,nss-gpios replacing cs-gpios (the transport protocol holds
+ * NSS low across a multi-step request/ack/clock/complete cycle, not just
+ * one SPI transfer, so the driver must own and drive it directly rather
+ * than let the SPI core auto-toggle it per-message) and for declaring
+ * both driver-private GPIOs GPIO_ACTIVE_HIGH regardless of physical wire
+ * polarity (see drivers/spi/spi-mt-transport/spi_transport_hw_linux.c).
+ * pinctrl_ecspi2 below already covers both the NSS and INT pin muxes on
+ * this board (unlike the EVK, which needed separate overlay-added
+ * groups), so no pinctrl changes are needed here.
+ */
 &ecspi2 {
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi2>;
-	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
 
-	spidev1: spi@0 {
+	mt_transport0: spi@0 {
+		compatible = "multitracks,spi-transport";
 		reg = <0>;
-		compatible = "rohm,dh2228fv";
 		spi-max-frequency = <500000>;
+
+		multitracks,nss-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
+		multitracks,nrdy-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
 	};
 };
 
