@@ -16,12 +16,18 @@
  *
  * Scope note (MT-158113): this is the driver only. The EVK-side test
  * framework (MT-158682) is a separate ticket -- the userspace interface
- * below (one misc device per channel + a small per-channel TX ring, see
+ * below (one misc device per raw channel + a small per-channel TX ring, see
  * mt_transport_tx_service()) is still a placeholder ahead of a real config
- * surface: exactly two hardcoded channels (1: Transport Services, 2:
- * Property Model -- see firmware-common/mt_ipc_fbs/docs/ChannelMapping.md,
- * MT-148208), one misc device per channel, single in-flight RX message per
- * channel, no ioctl/config surface.
+ * surface: single in-flight RX message per channel, no ioctl/config
+ * surface. Channel *count* is generic, though (MT-159369): every raw
+ * channel the core supports (SPI_TRANSPORT_CHANNELS_MAX - 1, currently 19)
+ * gets a misc device, registered unconditionally at probe() time, whether
+ * or not anything uses it yet. What a given channel number actually
+ * carries (Transport Services on 1, Property Model on 2, the legacy IPC
+ * tunnel on 3, future MIDI/debug/vendor channels on 4+) is a
+ * userspace-level fact only (firmware-common/mt_ipc_fbs/docs/ChannelMapping.md)
+ * -- this driver has no notion of channel purpose, and adding a new one
+ * never requires a kernel change here again.
  */
 
 #include <linux/module.h>
@@ -51,15 +57,19 @@
 #define DRIVER_NAME "spi-mt-transport"
 #define MT_TRANSPORT_TX_QUEUE_DEPTH 10
 
-/* Exactly two channels, per firmware-common/mt_ipc_fbs/docs/ChannelMapping.md
- * (MT-148208): 1 = Transport Services, 2 = Property Model. Deliberately not
- * a general N-channel design -- see this file's header. Channel index 0's
- * misc device name/number are unchanged from the original single-channel
- * driver, for backward compatibility with existing tools/scripts.
+/* Every raw channel the spi-transport core supports
+ * (SPI_TRANSPORT_CHANNELS_MAX) except channel 0 (the transport's own
+ * control/handshake channel, never userspace-visible) gets a misc device --
+ * see this file's header. Channel 1 keeps the original single-channel
+ * driver's unprefixed misc device name ("mt_spi_transport") for backward
+ * compatibility with existing tools/scripts; every other channel is
+ * "mt_spi_transport_ch<N>" (see MT_TRANSPORT_MISC_NAME_MAX).
  */
-#define MT_TRANSPORT_NUM_CHANNELS 2
-#define MT_TRANSPORT_CHANNEL_1 1
-#define MT_TRANSPORT_CHANNEL_2 2
+#define MT_TRANSPORT_NUM_CHANNELS (SPI_TRANSPORT_CHANNELS_MAX - 1u)
+/* "mt_spi_transport_ch" (20) + up to 3 digits + NUL fits SPI_TRANSPORT_CHANNELS_MAX
+ * values up to 999 -- reassess if that constant ever grows past 3 digits.
+ */
+#define MT_TRANSPORT_MISC_NAME_MAX 24
 
 struct mt_transport_tx_slot {
 	uint8_t buf[SPI_TRANSPORT_CHANNEL_MESSAGE_MAX];
@@ -84,6 +94,13 @@ struct mt_transport_channel {
 					  * misc device.
 					  */
 	uint8_t channel_num;
+	char misc_name[MT_TRANSPORT_MISC_NAME_MAX]; /* backing storage for
+						       * misc.name -- must
+						       * outlive
+						       * misc_register(), so
+						       * can't be a probe()-
+						       * local buffer.
+						       */
 
 	/* Minimal placeholder userspace interface -- MT-158682 owns the real
 	 * design. Single hardcoded channel per device, single in-flight RX
@@ -175,10 +192,11 @@ struct mt_transport_priv {
 
 	struct task_struct *tick_thread;
 
-	/* Two channels, per firmware-common/mt_ipc_fbs/docs/ChannelMapping.md
-	 * (MT-148208): index 0 = Transport Services (channel 1, the
-	 * original single-channel device, unchanged name/number), index 1 =
-	 * Property Model (channel 2, new). See struct mt_transport_channel.
+	/* One entry per raw channel (index 0 = channel 1, the original
+	 * single-channel device's unchanged name/number, through index
+	 * MT_TRANSPORT_NUM_CHANNELS - 1 = channel SPI_TRANSPORT_CHANNELS_MAX - 1)
+	 * -- see MT_TRANSPORT_NUM_CHANNELS's comment and struct
+	 * mt_transport_channel.
 	 */
 	struct mt_transport_channel channels[MT_TRANSPORT_NUM_CHANNELS];
 
@@ -694,18 +712,6 @@ static int mt_transport_probe(struct spi_device *spi)
 	struct device *dev = &spi->dev;
 	struct mt_transport_priv *priv;
 	trSpiTransportConfig config;
-	static const uint8_t channel_nums[MT_TRANSPORT_NUM_CHANNELS] = {
-		MT_TRANSPORT_CHANNEL_1,
-		MT_TRANSPORT_CHANNEL_2,
-	};
-	/* Channel 1's name is unchanged from the original single-channel
-	 * driver -- every existing tool/script keeps working unmodified.
-	 * Channel 2 is new (MT-148208's Property Model).
-	 */
-	static const char *const channel_names[MT_TRANSPORT_NUM_CHANNELS] = {
-		"mt_spi_transport",
-		"mt_spi_transport_ch2",
-	};
 	int ret;
 	int i;
 	int started_misc = 0;
@@ -729,7 +735,12 @@ static int mt_transport_probe(struct spi_device *spi)
 		struct mt_transport_channel *chan = &priv->channels[i];
 
 		chan->priv = priv;
-		chan->channel_num = channel_nums[i];
+		chan->channel_num = (uint8_t)(i + 1);
+		if (chan->channel_num == 1)
+			strscpy(chan->misc_name, "mt_spi_transport", sizeof(chan->misc_name));
+		else
+			scnprintf(chan->misc_name, sizeof(chan->misc_name), "mt_spi_transport_ch%u",
+				  chan->channel_num);
 		atomic_set(&chan->available, 1);
 		init_waitqueue_head(&chan->rx_wq);
 		spin_lock_init(&chan->rx_lock);
@@ -870,7 +881,7 @@ static int mt_transport_probe(struct spi_device *spi)
 		struct mt_transport_channel *chan = &priv->channels[i];
 
 		chan->misc.minor = MISC_DYNAMIC_MINOR;
-		chan->misc.name = channel_names[i];
+		chan->misc.name = chan->misc_name;
 		chan->misc.fops = &mt_transport_misc_fops;
 		ret = misc_register(&chan->misc);
 		if (ret) {
@@ -910,7 +921,7 @@ static int mt_transport_probe(struct spi_device *spi)
 			spiTransportStop(priv->htransport);
 			kref_put(&priv->refcount, mt_transport_priv_release);
 			return dev_err_probe(dev, ret, "misc_register(%s) failed\n",
-					     channel_names[i]);
+					     chan->misc_name);
 		}
 		started_misc++;
 	}
