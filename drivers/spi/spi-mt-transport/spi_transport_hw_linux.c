@@ -141,6 +141,21 @@ static teSpiTransportError mt_hw_transfer_start(void *pContext, const uint8_t *p
 	}
 	reinit_completion(&ctx->transferComplete);
 
+	/* MT-159369 bring-up instrumentation: poison the RX buffer with a
+	 * sentinel pattern before every arm, distinct from any real frame
+	 * byte value the protocol would ever legitimately send (0xA5/0x5A
+	 * magic, mostly-zero payloads, small CRC/seq values). rx_buf is a
+	 * single, fixed buffer reused across every transfer (see the struct
+	 * comment on msg/xfer) -- if a completed ("successful") transfer's
+	 * dump still shows this sentinel anywhere, that byte was never
+	 * actually written by DMA, proving a short/partial transfer rather
+	 * than a fully-fresh 128 bytes. Deliberately poisoning the buffer
+	 * the core is about to hand to hardware, not just reading stale
+	 * content after the fact -- rules out "it was already zero from a
+	 * previous frame" as an alternate explanation for an all-zero
+	 * payload region. */
+	memset(pRx, 0x37, length);
+
 	spi_message_init(&ctx->msg);
 	memset(&ctx->xfer, 0, sizeof(ctx->xfer));
 	ctx->xfer.tx_buf = pTx;
