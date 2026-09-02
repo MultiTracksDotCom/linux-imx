@@ -54,6 +54,16 @@ static void mt_hw_spi_complete(void *context)
 {
 	struct mt_transport_hw_ctx *ctx = context;
 	uint16_t length = ctx->msg.status == 0 ? ctx->xfer.len : 0;
+	/* MT-159369 bring-up instrumentation -- see armedAt's struct comment. */
+	s64 armToCompleteUs = ktime_us_delta(ktime_get(), ctx->armedAt);
+
+	if (armToCompleteUs > 5000)
+		dev_warn(&ctx->spi->dev,
+			 "[MT-159369] slow transfer: arm-to-complete took %lldus (status=%d)\n",
+			 armToCompleteUs, ctx->msg.status);
+	else
+		dev_dbg(&ctx->spi->dev, "[MT-159369] transfer complete: arm-to-complete %lldus\n",
+			armToCompleteUs);
 
 	/* pOnTransferComplete() must run before transferComplete is signaled:
 	 * mt_hw_abort() waits on this same completion, and it runs on the
@@ -92,8 +102,14 @@ static teSpiTransportError mt_hw_transfer_start(void *pContext, const uint8_t *p
 	 * this is itself a bug elsewhere; refuse rather than corrupt state.
 	 */
 	if (!completion_done(&ctx->transferComplete)) {
+		/* MT-159369 bring-up instrumentation: how long has the stale
+		 * transfer already been outstanding at the moment this new
+		 * arm is refused? See armedAt's struct comment. */
+		s64 outstandingUs = ktime_us_delta(ktime_get(), ctx->armedAt);
+
 		dev_err(&ctx->spi->dev,
-			"pTransferStart() called with a previous transfer still in flight -- refusing to reinitialize shared msg/xfer state\n");
+			"pTransferStart() called with a previous transfer still in flight (outstanding %lldus) -- refusing to reinitialize shared msg/xfer state\n",
+			outstandingUs);
 		return eSpiTransportErrorHardwareFailure;
 	}
 	reinit_completion(&ctx->transferComplete);
@@ -106,6 +122,8 @@ static teSpiTransportError mt_hw_transfer_start(void *pContext, const uint8_t *p
 	spi_message_add_tail(&ctx->xfer, &ctx->msg);
 	ctx->msg.complete = mt_hw_spi_complete;
 	ctx->msg.context = ctx;
+
+	ctx->armedAt = ktime_get(); /* MT-159369 bring-up instrumentation */
 
 	ret = spi_async(ctx->spi, &ctx->msg);
 	if (ret) {

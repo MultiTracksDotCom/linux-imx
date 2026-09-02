@@ -17,6 +17,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/completion.h>
+#include <linux/ktime.h>
 
 #include "spi_transport/spi_transport_hw.h"
 
@@ -46,6 +47,15 @@ struct mt_transport_hw_ctx {
 	struct spi_message msg;
 	struct spi_transfer xfer;
 	struct completion transferComplete;
+
+	/* MT-159369 bring-up instrumentation: ktime_get() at the instant
+	 * spi_async() is successfully submitted in mt_hw_transfer_start(),
+	 * read back in mt_hw_spi_complete() to log actual arm-to-complete
+	 * latency, and in mt_hw_transfer_start()'s own "previous transfer
+	 * still in flight" guard to log how long the stale transfer has
+	 * already been outstanding at the moment a new arm is refused.
+	 * Diagnostic-only -- not part of the transfer-state contract. */
+	ktime_t armedAt;
 
 	/* Completion notify to wake the driver's tick kthread after a
 	 * transfer completes -- set by spi_mt_transport_drv.c via
