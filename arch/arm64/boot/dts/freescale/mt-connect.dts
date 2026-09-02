@@ -531,7 +531,7 @@
 	mt_transport0: spi@0 {
 		compatible = "multitracks,spi-transport";
 		reg = <0>;
-		spi-max-frequency = <10000000>;
+		spi-max-frequency = <4000000>; /* MT-159369: stepping down from 10MHz to isolate a clock-rate-dependent DMA-arm-failure/CRC stall -- 500kHz soak-tested clean, 10MHz stalls within seconds */
 
 		multitracks,nss-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
 		multitracks,nrdy-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
