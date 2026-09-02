@@ -531,7 +531,7 @@
 	mt_transport0: spi@0 {
 		compatible = "multitracks,spi-transport";
 		reg = <0>;
-		spi-max-frequency = <500000>;
+		spi-max-frequency = <10000000>;
 
 		multitracks,nss-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
 		multitracks,nrdy-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
