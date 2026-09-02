@@ -531,7 +531,7 @@
 	mt_transport0: spi@0 {
 		compatible = "multitracks,spi-transport";
 		reg = <0>;
-		spi-max-frequency = <4000000>; /* MT-159369: stepping down from 10MHz to isolate a clock-rate-dependent DMA-arm-failure/CRC stall -- 500kHz soak-tested clean, 10MHz stalls within seconds */
+		spi-max-frequency = <500000>; /* MT-159369: back to the soak-tested-clean rate -- 10MHz and 4MHz both showed the same 100%-failure DMA-arm/CRC pattern with zero improvement, so this is isolating whether the issue is clock-rate-dependent at all before chasing it as a structural/framing bug instead */
 
 		multitracks,nss-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
 		multitracks,nrdy-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
