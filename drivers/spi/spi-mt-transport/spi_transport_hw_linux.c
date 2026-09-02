@@ -10,8 +10,16 @@
 #include <linux/completion.h>
 #include <linux/sched.h>
 #include <linux/hardirq.h>
+#include <linux/atomic.h>
 
 #include "spi_transport_hw_linux.h"
+#include "spi_transport/spi_transport_frame.h"
+
+/* MT-159369 bring-up instrumentation: cap the raw-buffer hex dump below to
+ * the first few CRC failures -- enough to inspect the actual corruption
+ * pattern by eye without flooding dmesg the way the per-event "link event:
+ * ... CRC error" warnings already do. */
+static atomic_t gCrcDumpRemaining = ATOMIC_INIT(8);
 
 /*
  * Bound for mt_hw_abort()'s wait on an in-flight transfer's completion.
@@ -66,6 +74,23 @@ static void mt_hw_spi_complete(void *context)
 	else
 		dev_dbg(&ctx->spi->dev, "[MT-159369] transfer complete: arm-to-complete %lldus\n",
 			armToCompleteUs);
+
+	/* MT-159369 bring-up instrumentation: dump the actual raw bytes the
+	 * first few times a completed transfer fails header/payload CRC, so
+	 * the real corruption pattern (single scattered bit-flips vs. a
+	 * consistent byte-shift/offset vs. something else systematic) can be
+	 * inspected directly instead of just counted. Checked here, before
+	 * pOnTransferComplete() below hands the buffer to the core -- this is
+	 * the same raw content the core's own CRC check will see. */
+	if ((length > 0) && !spiTransportFrameHeaderCrcOk(ctx->xfer.rx_buf)) {
+		if (atomic_dec_if_positive(&gCrcDumpRemaining) >= 0)
+			print_hex_dump(KERN_ERR, "[MT-159369] hdrCrc-fail rx: ", DUMP_PREFIX_OFFSET,
+				       16, 1, ctx->xfer.rx_buf, length, false);
+	} else if ((length > 0) && !spiTransportFramePayloadCrcOk(ctx->xfer.rx_buf)) {
+		if (atomic_dec_if_positive(&gCrcDumpRemaining) >= 0)
+			print_hex_dump(KERN_ERR, "[MT-159369] payCrc-fail rx: ", DUMP_PREFIX_OFFSET,
+				       16, 1, ctx->xfer.rx_buf, length, false);
+	}
 
 	/* pOnTransferComplete() must run before transferComplete is signaled:
 	 * mt_hw_abort() waits on this same completion, and it runs on the
