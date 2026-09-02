@@ -8,6 +8,8 @@
 #include <linux/device.h>
 #include <linux/string.h>
 #include <linux/completion.h>
+#include <linux/sched.h>
+#include <linux/hardirq.h>
 
 #include "spi_transport_hw_linux.h"
 
@@ -108,8 +110,8 @@ static teSpiTransportError mt_hw_transfer_start(void *pContext, const uint8_t *p
 		s64 outstandingUs = ktime_us_delta(ktime_get(), ctx->armedAt);
 
 		dev_err(&ctx->spi->dev,
-			"pTransferStart() called with a previous transfer still in flight (outstanding %lldus) -- refusing to reinitialize shared msg/xfer state\n",
-			outstandingUs);
+			"pTransferStart() called with a previous transfer still in flight (outstanding %lldus, caller=%s in_irq=%d in_softirq=%d) -- refusing to reinitialize shared msg/xfer state\n",
+			outstandingUs, current->comm, (int)in_irq(), (int)in_softirq());
 		return eSpiTransportErrorHardwareFailure;
 	}
 	reinit_completion(&ctx->transferComplete);
