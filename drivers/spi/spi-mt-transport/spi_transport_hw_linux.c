@@ -21,6 +21,20 @@
  * ... CRC error" warnings already do. */
 static atomic_t gCrcDumpRemaining = ATOMIC_INIT(8);
 
+/* MT-159369 bring-up diagnostic: unconditional (not CRC-failure-gated, see
+ * gCrcDumpRemaining above) raw dump of the first few TX/RX frames, for
+ * direct cross-reference against the STM32 side's matching "fbs TX"/
+ * "fbs RX" hex dumps (plat_fbs.cpp, commit a4a66d11) of the same early
+ * exchange -- goal is localizing the dual-headerCrc non-determinism
+ * finding to a specific hop. Two independent counters rather than a
+ * paired per-transfer flag: unlike the STM32 side (which boots long
+ * before Linux is up and has to gate on "first real armed transfer"),
+ * this Host-side driver only starts arming once the tick thread is
+ * already running against a live link, so the Nth TX dump and Nth RX
+ * dump line up by simple chronological order in dmesg. */
+static atomic_t gTxDumpRemaining = ATOMIC_INIT(5);
+static atomic_t gRxDumpRemaining = ATOMIC_INIT(5);
+
 /*
  * Bound for mt_hw_abort()'s wait on an in-flight transfer's completion.
  * spi_imx_dma_transfer()'s own internal timeout (spi_imx_calculate_timeout()
@@ -92,6 +106,16 @@ static void mt_hw_spi_complete(void *context)
 				       16, 1, ctx->xfer.rx_buf, length, false);
 	}
 
+	/* MT-159369 bring-up diagnostic: unconditional raw RX dump for the
+	 * first few completions -- see gRxDumpRemaining's doc comment. Not
+	 * gated on CRC pass/fail (unlike the dumps just above), so this
+	 * covers whatever the first few real exchanges actually look like,
+	 * cross-referenceable against the STM32 side's "fbs RX" dump for the
+	 * same window. */
+	if ((length > 0) && (atomic_dec_if_positive(&gRxDumpRemaining) >= 0))
+		print_hex_dump(KERN_ERR, "[MT-159369] RX raw: ", DUMP_PREFIX_OFFSET, 16, 1,
+			       ctx->xfer.rx_buf, length, false);
+
 	/* pOnTransferComplete() must run before transferComplete is signaled:
 	 * mt_hw_abort() waits on this same completion, and it runs on the
 	 * tick thread -- a different context than this SPI completion
@@ -140,6 +164,16 @@ static teSpiTransportError mt_hw_transfer_start(void *pContext, const uint8_t *p
 		return eSpiTransportErrorHardwareFailure;
 	}
 	reinit_completion(&ctx->transferComplete);
+
+	/* MT-159369 bring-up diagnostic: unconditional raw TX dump for the
+	 * first few arms -- see gTxDumpRemaining's doc comment above. This is
+	 * "what we're about to hand to spi_async()", captured before anything
+	 * else touches pTx/pRx this call, for direct cross-reference against
+	 * the STM32 side's "fbs TX" dump (what it believes it armed) for the
+	 * same early exchange. */
+	if (atomic_dec_if_positive(&gTxDumpRemaining) >= 0)
+		print_hex_dump(KERN_ERR, "[MT-159369] TX raw: ", DUMP_PREFIX_OFFSET, 16, 1, pTx,
+			       length, false);
 
 	/* MT-159369 bring-up instrumentation: poison the RX buffer with a
 	 * sentinel pattern before every arm, distinct from any real frame
