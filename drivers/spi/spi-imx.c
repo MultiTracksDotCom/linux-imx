@@ -1487,6 +1487,15 @@ static int spi_imx_dma_transfer(struct spi_imx_data *spi_imx,
 	struct scatterlist *last_sg = sg_last(rx->sgl, rx->nents);
 	unsigned int bytes_per_word, i;
 	int ret;
+	/* MT-159369 bring-up instrumentation: neither wait_for_completion below
+	 * verifies the DMA engine actually drained every byte it was asked to
+	 * move -- completion only means the channel's callback fired, not that
+	 * dma_rx_completion corresponds to a full-residue transfer. Capture
+	 * cookies here so residue can be checked against actual transfer->len
+	 * once both completions fire, to test whether short/partial RX DMA
+	 * completions are the source of the CRC-corruption investigation's
+	 * "correct wire data, wrong bytes in memory" symptom. */
+	dma_cookie_t rx_cookie, tx_cookie;
 
 	if ((is_imx51_ecspi(spi_imx) || is_imx53_ecspi(spi_imx)) &&
 	    transfer->len > MX53_MAX_TRANSFER_BYTES && spi_imx->target_mode) {
@@ -1532,7 +1541,7 @@ static int spi_imx_dma_transfer(struct spi_imx_data *spi_imx,
 
 	desc_rx->callback = spi_imx_dma_rx_callback;
 	desc_rx->callback_param = (void *)spi_imx;
-	dmaengine_submit(desc_rx);
+	rx_cookie = dmaengine_submit(desc_rx); /* MT-159369 bring-up instrumentation */
 	reinit_completion(&spi_imx->dma_rx_completion);
 	dma_async_issue_pending(controller->dma_rx);
 
@@ -1547,7 +1556,7 @@ static int spi_imx_dma_transfer(struct spi_imx_data *spi_imx,
 
 	desc_tx->callback = spi_imx_dma_tx_callback;
 	desc_tx->callback_param = (void *)spi_imx;
-	dmaengine_submit(desc_tx);
+	tx_cookie = dmaengine_submit(desc_tx); /* MT-159369 bring-up instrumentation */
 	reinit_completion(&spi_imx->dma_tx_completion);
 	dma_async_issue_pending(controller->dma_tx);
 
@@ -1573,6 +1582,33 @@ static int spi_imx_dma_transfer(struct spi_imx_data *spi_imx,
 			spi_imx->devtype_data->reset(spi_imx);
 			dmaengine_terminate_all(controller->dma_rx);
 			return -ETIMEDOUT;
+		}
+
+		/* MT-159369 bring-up instrumentation: both completions above
+		 * only prove each channel's callback fired -- neither proves
+		 * the engine actually drained transfer->len bytes. Check
+		 * residue directly; a nonzero value here would mean the RX/TX
+		 * buffer genuinely has fewer real bytes than the rest of this
+		 * driver assumes, direct evidence for (or against) the
+		 * CRC-corruption investigation's short-DMA-completion theory. */
+		{
+			struct dma_tx_state rx_state, tx_state;
+			enum dma_status rx_dma_status, tx_dma_status;
+
+			rx_dma_status = dmaengine_tx_status(controller->dma_rx, rx_cookie,
+							     &rx_state);
+			tx_dma_status = dmaengine_tx_status(controller->dma_tx, tx_cookie,
+							     &tx_state);
+
+			if (rx_state.residue != 0 || tx_state.residue != 0)
+				dev_err(spi_imx->dev,
+					"[MT-159369] DMA residue nonzero after completion: rx_status=%d rx_residue=%u tx_status=%d tx_residue=%u len=%u\n",
+					rx_dma_status, rx_state.residue,
+					tx_dma_status, tx_state.residue, transfer->len);
+			else
+				dev_dbg(spi_imx->dev,
+					"[MT-159369] DMA residue clean: len=%u\n",
+					transfer->len);
 		}
 	} else {
 		spi_imx->target_aborted = false;
