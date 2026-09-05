@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/spi/multitracks,spi-transport.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: MultiTracks SPI transport protocol (Host role)
+
+maintainers:
+  - Michael Loh <michael@multitracks.com>
+
+description: |
+  A framed, multi-channel, ack/retry link between an i.MX SoC (Host) and an
+  STM32-class client MCU (Client) over a raw SPI bus, plus a companion NRDY
+  GPIO handshake line in addition to the physical SPI SCK/MOSI/MISO lines.
+  See the firmware repo's firmware-common/spi-transport/docs/ProtocolSpec.md
+  for the full wire protocol.
+
+  NSS and NRDY are bound here as driver-private properties, not the
+  standard "cs-gpios" -- the protocol holds NSS low continuously across a
+  multi-step request/ack/clock/complete cycle, not just one SPI transfer,
+  so the driver owns and drives it directly rather than letting the SPI
+  core auto-toggle it per-message.
+
+allOf:
+  - $ref: /schemas/spi/spi-peripheral-props.yaml#
+
+properties:
+  compatible:
+    const: multitracks,spi-transport
+
+  reg:
+    maxItems: 1
+
+  multitracks,nss-gpios:
+    maxItems: 1
+    description:
+      Host-driven NSS (transfer request) line, held low across the whole
+      request/ack/clock/complete cycle. Always GPIO_ACTIVE_HIGH regardless
+      of the physical wire's true active sense, so the driver's logical
+      value always equals the literal pin level (the protocol's own
+      convention is "true = pin HIGH").
+
+  multitracks,nrdy-gpios:
+    maxItems: 1
+    description:
+      Client-driven NRDY (ready/ack) line, read by the Host. Same
+      GPIO_ACTIVE_HIGH convention as multitracks,nss-gpios.
+
+required:
+  - compatible
+  - reg
+  - spi-max-frequency
+  - multitracks,nss-gpios
+  - multitracks,nrdy-gpios
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+    spi {
+        #address-cells = <1>;
+        #size-cells = <0>;
+
+        spi@0 {
+            compatible = "multitracks,spi-transport";
+            reg = <0>;
+            spi-max-frequency = <500000>;
+
+            multitracks,nss-gpios = <&gpio5 13 GPIO_ACTIVE_HIGH>;
+            multitracks,nrdy-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
+        };
+    };
+
+...
