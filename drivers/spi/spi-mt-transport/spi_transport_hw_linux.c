@@ -351,25 +351,39 @@ void mt_transport_hw_linux_set_notify(struct mt_transport_hw_ctx *ctx,
 	ctx->pNotifyCtx = pNotifyCtx;
 }
 
+/* MT-159369: this used to read the GPIO level and call pOnReadyEvent()
+ * (onReadyEvent() in the core -- hostArmTransferIfAcked()/
+ * hostIssueRequestIfReady(), real frame-building and pTransferStart()/
+ * spi_async() work) synchronously, right here, on every edge -- a "pure
+ * latency optimization" per the core's own comment on onReadyEvent(),
+ * which also documents that the tick-driven poll path is fully correct
+ * and sufficient on its own without it.
+ *
+ * That optimization is exactly backwards for what NRDY actually is: an
+ * edge-triggered GPIO used only to wake a consumer, whose real state
+ * lives in the level, not the edge. genirq runs every threaded IRQ
+ * handler -- this one included -- as SCHED_FIFO (kernel/irq/manage.c,
+ * irq_thread() -> sched_set_fifo()), and this board's kernel disables
+ * the normal RT-throttling cap (disable-rt-throttling.cfg, deliberately,
+ * for real-time audio). Doing real per-transfer work here means a
+ * rapidly-toggling NRDY line (a real link-quality storm, not a bug in
+ * NRDY itself) turns into unbounded SCHED_FIFO CPU consumption with
+ * nothing capping it -- confirmed as the mechanism behind a boot-time
+ * hang where even the softlockup/hung-task watchdogs (plain SCHED_OTHER)
+ * never got to run.
+ *
+ * Fix: this handler is now purely a trigger, not an actor. It does not
+ * read the GPIO or call pOnReadyEvent() at all -- it only wakes the tick
+ * thread, which reads the *current* level via pReadyRead() when it
+ * actually runs (hostServiceTick()/hostIssueRequestIfReady(), already
+ * documented as correct and sufficient standalone). No matter how fast
+ * NRDY bounces, the amount of real work stays capped at the tick
+ * thread's own (SCHED_OTHER, non-starving) pace instead of scaling with
+ * edge frequency.
+ */
 irqreturn_t mt_transport_hw_linux_nrdy_irq(int irq, void *dev_id)
 {
 	struct mt_transport_hw_ctx *ctx = dev_id;
-	int val = gpiod_get_value_cansleep(ctx->nrdy_gpiod);
-
-	/* Same errno-to-true bug as mt_hw_ready_read(), but here a
-	 * misreported level would advance the Host state machine on a bad
-	 * handshake -- skip the event entirely on error instead of guessing
-	 * a level; the tick thread's own pReadyRead() polling remains
-	 * available as a fallback. Found by Copilot's PR #46 review.
-	 */
-	if (val < 0) {
-		dev_err_ratelimited(&ctx->spi->dev, "NRDY GPIO read failed in IRQ handler: %d\n",
-				    val);
-		return IRQ_HANDLED;
-	}
-
-	if (ctx->pHw->pOnReadyEvent)
-		ctx->pHw->pOnReadyEvent(ctx->pHw->pCoreCtx, val ? true : false);
 
 	if (ctx->pNotify)
 		ctx->pNotify(ctx->pNotifyCtx);
