@@ -303,37 +303,53 @@ static void mt_transport_event_callback(void *pContext, teSpiTransportEvent eEve
 	struct mt_transport_channel *chan = pContext;
 	struct mt_transport_priv *priv    = chan->priv;
 
+	/* MT-159369: these were plain dev_info()/dev_warn() -- unlike
+	 * spi_transport_hw_linux.c's dev_err_ratelimited() for the analogous
+	 * NRDY-read-failure case, nothing here throttled the print rate.
+	 * Fine for the bounded, human-supervised bring-up testing this was
+	 * written for (MT-158113: ~50 connect/disconnect cycles, a few dozen
+	 * injected DMA failures), but a real link-quality storm can raise
+	 * these into the hundreds/sec. imx_uart_console_write() holds
+	 * port.lock with local IRQs (and RRDYEN, its own RX-ready IRQ)
+	 * disabled for the full synchronous, poll-driven duration of each
+	 * line at the console baud rate -- confirmed live: this is why
+	 * serial BREAK + magic sysrq got no response during the hang, not a
+	 * genuine deadlock. Back-to-back events leave no gap for anything
+	 * else -- including the RX path a BREAK needs, and the timer tick
+	 * the softlockup/hung-task watchdogs themselves need -- to run.
+	 * _ratelimited keeps these visible without the storm.
+	 */
 	switch (eEvent) {
 	case eSpiTransportEventConnected:
 		atomic_inc(&priv->evt_connected);
-		dev_info(priv->dev, "link event: connected\n");
+		dev_info_ratelimited(priv->dev, "link event: connected\n");
 		break;
 	case eSpiTransportEventDisconnected:
 		atomic_inc(&priv->evt_disconnected);
-		dev_info(priv->dev, "link event: disconnected\n");
+		dev_info_ratelimited(priv->dev, "link event: disconnected\n");
 		break;
 	case eSpiTransportEventErrorHeaderCrc:
 		atomic_inc(&priv->evt_hdr_crc);
-		dev_warn(priv->dev, "link event: header CRC error\n");
+		dev_warn_ratelimited(priv->dev, "link event: header CRC error\n");
 		break;
 	case eSpiTransportEventErrorPayloadCrc:
 		atomic_inc(&priv->evt_payload_crc);
-		dev_warn(priv->dev, "link event: payload CRC error\n");
+		dev_warn_ratelimited(priv->dev, "link event: payload CRC error\n");
 		break;
 	case eSpiTransportEventErrorSequenceGap:
 		atomic_inc(&priv->evt_seq_gap);
-		dev_warn(priv->dev, "link event: sequence gap\n");
+		dev_warn_ratelimited(priv->dev, "link event: sequence gap\n");
 		break;
 	case eSpiTransportEventErrorDmaFailure:
 		atomic_inc(&priv->evt_dma_failure);
-		dev_warn(priv->dev, "link event: DMA arm failure\n");
+		dev_warn_ratelimited(priv->dev, "link event: DMA arm failure\n");
 		break;
 	case eSpiTransportEventErrorDmaTimeout:
 		atomic_inc(&priv->evt_dma_timeout);
-		dev_warn(priv->dev, "link event: DMA timeout\n");
+		dev_warn_ratelimited(priv->dev, "link event: DMA timeout\n");
 		break;
 	default:
-		dev_warn(priv->dev, "link event: unknown (%d)\n", (int)eEvent);
+		dev_warn_ratelimited(priv->dev, "link event: unknown (%d)\n", (int)eEvent);
 		break;
 	}
 }

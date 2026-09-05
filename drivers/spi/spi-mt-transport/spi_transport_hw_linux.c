@@ -81,8 +81,15 @@ static void mt_hw_spi_complete(void *context)
 	/* MT-159369 bring-up instrumentation -- see armedAt's struct comment. */
 	s64 armToCompleteUs = ktime_us_delta(ktime_get(), ctx->armedAt);
 
+	/* MT-159369: ratelimited -- during a real link-quality storm this
+	 * can fire on nearly every frame. Unthrottled, it joins
+	 * mt_transport_event_callback()'s per-event logging (see that
+	 * function's comment) in saturating imx_uart_console_write()'s
+	 * IRQ-disabled, poll-driven console path -- confirmed live as the
+	 * actual mechanism behind the boot-time hang, not a genuine
+	 * deadlock. */
 	if (armToCompleteUs > 5000)
-		dev_warn(&ctx->spi->dev,
+		dev_warn_ratelimited(&ctx->spi->dev,
 			 "[MT-159369] slow transfer: arm-to-complete took %lldus (status=%d)\n",
 			 armToCompleteUs, ctx->msg.status);
 	else
@@ -158,7 +165,12 @@ static teSpiTransportError mt_hw_transfer_start(void *pContext, const uint8_t *p
 		 * arm is refused? See armedAt's struct comment. */
 		s64 outstandingUs = ktime_us_delta(ktime_get(), ctx->armedAt);
 
-		dev_err(&ctx->spi->dev,
+		/* MT-159369: ratelimited for the same reason as
+		 * mt_hw_spi_complete()'s slow-transfer warning above -- this
+		 * guard can trip on nearly every request during a real
+		 * retry storm, and unthrottled it was part of what saturated
+		 * the console path and produced the boot-time hang. */
+		dev_err_ratelimited(&ctx->spi->dev,
 			"pTransferStart() called with a previous transfer still in flight (outstanding %lldus, caller=%s in_irq=%d in_softirq=%d) -- refusing to reinitialize shared msg/xfer state\n",
 			outstandingUs, current->comm, (int)in_irq(), (int)in_softirq());
 		return eSpiTransportErrorHardwareFailure;
