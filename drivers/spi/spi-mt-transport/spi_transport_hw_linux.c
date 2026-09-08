@@ -77,7 +77,13 @@ static atomic_t gRxDumpRemaining = ATOMIC_INIT(5);
 static void mt_hw_spi_complete(void *context)
 {
 	struct mt_transport_hw_ctx *ctx = context;
-	uint16_t length = ctx->msg.status == 0 ? ctx->xfer.len : 0;
+	/* actual_length, not the bare requested xfer.len -- a short-but-
+	 * "successful" (status==0) DMA completion would otherwise hand the
+	 * core stale/unwritten tail bytes as if they were real data. Found by
+	 * Copilot's PR #46 review. */
+	uint16_t length = ctx->msg.status == 0
+				   ? min_t(unsigned, ctx->msg.actual_length, ctx->xfer.len)
+				   : 0;
 	/* MT-159369 bring-up instrumentation -- see armedAt's struct comment. */
 	s64 armToCompleteUs = ktime_us_delta(ktime_get(), ctx->armedAt);
 

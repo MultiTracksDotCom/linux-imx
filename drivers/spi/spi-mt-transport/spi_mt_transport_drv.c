@@ -732,6 +732,25 @@ static int mt_transport_probe(struct spi_device *spi)
 	int i;
 	int started_misc = 0;
 
+	/* SPI_NO_CS, not a devicetree property: there is no generic
+	 * "spi-no-cs"/"spi-no-cs;" binding parsed anywhere in this kernel's
+	 * SPI core (checked drivers/spi/spi.c's of_spi_parse_dt() -- only
+	 * spi-cpha/spi-cpol/spi-3wire/spi-lsb-first/spi-cs-high are wired to
+	 * spi->mode there), so setting it from the DTS would silently do
+	 * nothing. Since this driver already owns NSS as a private manually-
+	 * driven GPIO instead of the standard "cs-gpios" (see this file's own
+	 * multitracks,nss-gpios comment below and spi_transport_hw_linux.c's
+	 * file comment), it must also tell the SPI core to leave its own
+	 * chip-select alone entirely -- spi-imx.c's controller->mode_bits
+	 * already advertises SPI_NO_CS support, so this is purely opting in.
+	 * Must precede spi_setup() so the mode change actually takes effect.
+	 * Found by Copilot's PR #46 review.
+	 */
+	spi->mode |= SPI_NO_CS;
+	ret = spi_setup(spi);
+	if (ret)
+		return dev_err_probe(dev, ret, "spi_setup(SPI_NO_CS) failed\n");
+
 	/* Plain kzalloc, not devm_kzalloc: see the refcount/available/removed
 	 * comment on struct mt_transport_priv -- this memory must be able to
 	 * outlive the SPI device's unbind if userspace still holds a
@@ -814,6 +833,13 @@ static int mt_transport_probe(struct spi_device *spi)
 						 mt_transport_rx_callback, mt_transport_event_callback,
 						 chan)
 		    != eSpiTransportErrorNone) {
+			/* Release the gInstances[] pool slot spiTransportInit()
+			 * claimed above -- every post-Init probe failure path
+			 * must do this or repeated failed probes permanently
+			 * exhaust SPI_TRANSPORT_INSTANCES_MAX. Found by
+			 * Copilot's PR #46 review.
+			 */
+			spiTransportDeinit(priv->htransport);
 			kref_put(&priv->refcount, mt_transport_priv_release);
 			return dev_err_probe(dev, -EINVAL,
 					     "spiTransportRegisterChannel(%u) failed\n",
@@ -836,6 +862,12 @@ static int mt_transport_probe(struct spi_device *spi)
 	 * instead of the actual IRQ becoming available a bit later.
 	 */
 	if (priv->nrdy_irq == -EPROBE_DEFER) {
+		/* Release the gInstances[] pool slot spiTransportInit()
+		 * claimed above -- see the RegisterChannel-loop failure path
+		 * above for the full reasoning. Found by Copilot's PR #46
+		 * review.
+		 */
+		spiTransportDeinit(priv->htransport);
 		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, -EPROBE_DEFER, "NRDY IRQ not ready yet\n");
 	}
@@ -874,6 +906,12 @@ static int mt_transport_probe(struct spi_device *spi)
 		 */
 		if (priv->nrdy_irq_requested)
 			devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
+		/* Release the gInstances[] pool slot spiTransportInit()
+		 * claimed above -- see the RegisterChannel-loop failure path
+		 * above for the full reasoning. Found by Copilot's PR #46
+		 * review.
+		 */
+		spiTransportDeinit(priv->htransport);
 		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, ret, "failed to start tick thread\n");
 	}
@@ -889,6 +927,12 @@ static int mt_transport_probe(struct spi_device *spi)
 		if (priv->nrdy_irq_requested)
 			devm_free_irq(dev, priv->nrdy_irq, &priv->hw_ctx);
 		kthread_stop(priv->tick_thread);
+		/* Release the gInstances[] pool slot spiTransportInit()
+		 * claimed above -- see the RegisterChannel-loop failure path
+		 * above for the full reasoning. Found by Copilot's PR #46
+		 * review.
+		 */
+		spiTransportDeinit(priv->htransport);
 		kref_put(&priv->refcount, mt_transport_priv_release);
 		return dev_err_probe(dev, -EINVAL, "spiTransportStart failed\n");
 	}
@@ -935,6 +979,12 @@ static int mt_transport_probe(struct spi_device *spi)
 				misc_deregister(&priv->channels[j].misc);
 			kthread_stop(priv->tick_thread);
 			spiTransportStop(priv->htransport);
+			/* Release the gInstances[] pool slot spiTransportInit()
+			 * claimed above -- see the RegisterChannel-loop failure path
+			 * earlier in this function for the full reasoning. Found by
+			 * Copilot's PR #46 review.
+			 */
+			spiTransportDeinit(priv->htransport);
 			kref_put(&priv->refcount, mt_transport_priv_release);
 			return dev_err_probe(dev, ret, "misc_register(%s) failed\n",
 					     chan->misc_name);
@@ -1001,6 +1051,13 @@ static void mt_transport_remove(struct spi_device *spi)
 	 */
 	kthread_stop(priv->tick_thread);
 	spiTransportStop(priv->htransport);
+	/* Balances spiTransportInit() in probe() -- without this, a
+	 * sysfs-triggered unbind/rebind cycle (not just a failed probe
+	 * retry) also permanently leaks a gInstances[] slot, since
+	 * spiTransportStop() itself never clears inUse. Found by
+	 * Copilot's PR #46 review.
+	 */
+	spiTransportDeinit(priv->htransport);
 
 	/* Drops the driver instance's own reference (taken via kref_init()
 	 * in probe()). If no fd is currently open on either channel, this is
