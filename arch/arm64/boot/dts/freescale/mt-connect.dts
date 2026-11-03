@@ -543,6 +543,14 @@
 	usb-role-switch;
 	role-switch-default-mode = "host";
 	disable-over-current;
+	/*
+	 * Moderate completion interrupts to one per 4 microframes (500 us at
+	 * high speed) so UAC2 gadget traffic does not interrupt CPU0 once per
+	 * packet. Transfer scheduling is unchanged while requests remain
+	 * queued; the UAC2 data endpoints need more than 4 requests queued
+	 * (connect sets req_number to 8) to cover the longer completion delay.
+	 */
+	itc-setting = <4>;
 	status = "okay";
 };
 
@@ -556,6 +564,14 @@
 	usb-role-switch;
 	role-switch-default-mode = "host";
 	disable-over-current;
+	/*
+	 * Moderate completion interrupts to one per 4 microframes (500 us at
+	 * high speed) so UAC2 gadget traffic does not interrupt CPU0 once per
+	 * packet. Transfer scheduling is unchanged while requests remain
+	 * queued; the UAC2 data endpoints need more than 4 requests queued
+	 * (connect sets req_number to 8) to cover the longer completion delay.
+	 */
+	itc-setting = <4>;
 	status = "okay";
 };
 
