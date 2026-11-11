@@ -1211,6 +1211,27 @@ config SPI_LOOPBACK_TEST
 	  primarily used for development of spi_master drivers
 	  and to detect regressions
 
+config SPI_MT_TRANSPORT
+	tristate "MultiTracks SPI transport protocol driver (Host role)"
+	# No COMPILE_TEST: this module's core/ subdirectory only exists once
+	# Yocto's meta-mt-transport-evk stages it in at build time (see this
+	# directory's Makefile) -- allmodconfig/allyesconfig CI builds outside
+	# that pipeline would hard-error on core/ being missing. Found by
+	# Copilot's PR #46 review.
+	depends on ARCH_MXC
+	depends on GPIOLIB
+	# Driver unconditionally registers dev_groups/DEVICE_ATTR_RO sysfs
+	# attributes and calls sysfs_emit() -- non-functional without SYSFS.
+	# Found by Copilot's PR #46 review.
+	depends on SYSFS
+	help
+	  Kernel Host-role port of the MultiTracks SPI transport protocol
+	  (see firmware repo firmware-common/spi-transport/) -- a framed,
+	  multi-channel, ack/retry link between an i.MX SoC (Host) and an
+	  STM32-class client MCU (Client) over a raw SPI bus, plus a
+	  companion NRDY GPIO handshake line in addition to the physical
+	  SPI SCK/MOSI/MISO/NSS lines.
+
 config SPI_TLE62X0
 	tristate "Infineon TLE62X0 (for power switching)"
 	depends on SYSFS
