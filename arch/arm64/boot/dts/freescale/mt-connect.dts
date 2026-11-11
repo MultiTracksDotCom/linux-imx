@@ -445,6 +445,17 @@
 	"", "", "SPI2_SCK", "SPI2_MOSI", "SPI2_MISO", "SPI2_NSS", "", "",
 	"DPM_I2C2_SCL", "DPM_I2C2_SDA", "", "", "DPM_I2C4_SCL", "DPM_I2C4_SDA", "", "",
 	"DPM_CONSOLE_RX", "DPM_CONSOLE_TX", "DPM_DEBUG_RX", "DPM_DEBUG_TX", "", "", "", "";
+
+	/*
+	 * Force DANTE_OSC_MCLK to input and reserve it, so neither an inherited
+	 * GDIR bit nor a later GPIO consumer can drive against the Si5351B.
+	 */
+	dpm-hp-dac-mclk-hog {
+		gpio-hog;
+		gpios = <2 GPIO_ACTIVE_HIGH>;
+		input;
+		line-name = "DPM_HP_DAC_MCLK";
+	};
 };
 
 &i2c4 {
