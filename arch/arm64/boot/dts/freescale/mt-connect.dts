@@ -439,10 +439,23 @@
 };
 
 &gpio5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_gpio5>;
 	gpio-line-names = "DPM_HP_DAC_BCLK", "DPM_HP_DAC_SD", "DPM_HP_DAC_MCLK", "", "", "PWM_MEMBRANE", "", "",
 	"", "", "SPI2_SCK", "SPI2_MOSI", "SPI2_MISO", "SPI2_NSS", "", "",
 	"DPM_I2C2_SCL", "DPM_I2C2_SDA", "", "", "DPM_I2C4_SCL", "DPM_I2C4_SDA", "", "",
 	"DPM_CONSOLE_RX", "DPM_CONSOLE_TX", "DPM_DEBUG_RX", "DPM_DEBUG_TX", "", "", "", "";
+
+	/*
+	 * Force DANTE_OSC_MCLK to input and reserve it, so neither an inherited
+	 * GDIR bit nor a later GPIO consumer can drive against the Si5351B.
+	 */
+	dpm-hp-dac-mclk-hog {
+		gpio-hog;
+		gpios = <2 GPIO_ACTIVE_HIGH>;
+		input;
+		line-name = "DPM_HP_DAC_MCLK";
+	};
 };
 
 &i2c4 {
@@ -730,7 +743,20 @@
 		MX8MM_IOMUXC_SAI3_TXC_SAI3_TX_BCLK		0x80 /* DANTE_OSC_SCLK */
 		MX8MM_IOMUXC_SAI3_TXD_SAI3_TX_DATA0		0xd6 /* DPM_HP_DAC_SD */
 		MX8MM_IOMUXC_SAI3_TXFS_SAI3_TX_SYNC		0x80 /* DPM_HP_DAC_LRCK */
-		MX8MM_IOMUXC_SAI3_MCLK_SAI3_MCLK		0x80 /* DANTE_OSC_MCLK input */
+		>;
+	};
+
+	/*
+	 * SAI3_MCLK (AD6) carries the Si5351B CLK2 24.576 MHz MCLK to the
+	 * headphone DAC. It must stay muxed as a GPIO input, never ALT0
+	 * (SAI3_MCLK): in ALT0 the i.MX8MM drives the pad from SAI3_CLK_ROOT
+	 * unless IOMUXC_GPR2[2] is set, regardless of SAI3 MCR.MOE, and the pad
+	 * fights the Si5351B (MT-165623). SAI3 is a BCLK/LRCLK consumer and
+	 * never uses MCLK. The same applies to SAI1_MCLK/SAI2_MCLK.
+	 */
+	pinctrl_gpio5: gpio5grp {
+		fsl,pins = <
+		MX8MM_IOMUXC_SAI3_MCLK_GPIO5_IO2			0x80 /* DANTE_OSC_MCLK input */
 		>;
 	};
 
