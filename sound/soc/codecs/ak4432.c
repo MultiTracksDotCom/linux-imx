@@ -629,7 +629,12 @@ static int ak4432_set_dai_mute(struct snd_soc_dai *dai, int mute, int direction)
 	SNDRV_PCM_RATE_96000 | SNDRV_PCM_RATE_176400 |\
 	SNDRV_PCM_RATE_192000)  // | SNDRV_PCM_RATE_384000 | SNDRV_PCM_RATE_768000
 
-#define AK4432_FORMATS		SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S32_LE
+/*
+ * The DAC decodes each 32-bit slot as 32-bit MSB justified, so only S32_LE
+ * is bit-exact. S16_LE and S24_LE sit in the low bits of the slot and would
+ * play 96 dB and 48 dB too quiet; plughw and PipeWire convert them instead.
+ */
+#define AK4432_FORMATS		SNDRV_PCM_FMTBIT_S32_LE
 
 
 static struct snd_soc_dai_ops ak4432_dai_ops = {
