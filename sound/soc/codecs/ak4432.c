@@ -76,16 +76,21 @@ static int ak4432_read_register(void *context, unsigned int reg, unsigned int *v
 static const struct reg_default ak4432_reg[] = {
 	{ AK4432_00_POWER_MANAGEMENT, 0x02 },	/* AK4432_00_POWER_MANAGEMENT - PMDA off */
 	{ AK4432_01_CONTROL1, 0x00 },	/* AK4432_01_CONTROL1 - ACKS bit set for auto clock detection */
-	{ AK4432_02_DATA_INTERFACE, 0x06 },	/* AK4432_02_DATA_INTERFACE - TDM128, L1 R1 TDM slot, 24-bit LSB justified */
-	{ AK4432_03_CONTROL2, 0x01 },	/* AK4432_03_CONTROL2 - Normal operation */
+	/*
+	 * 02h and 03h hold the chip's reset values so the register cache matches
+	 * the hardware; ak4432_init_reg() programs the operating values.
+	 */
+	{ AK4432_02_DATA_INTERFACE, 0x06 },	/* AK4432_02_DATA_INTERFACE - reset value: stereo mode, L1/R1, 32-bit MSB justified */
+	{ AK4432_03_CONTROL2, 0x01 },	/* AK4432_03_CONTROL2 - reset value: SYNCE=1, SMUTE=0, ATS=0 */
 	{ AK4432_04_AOUTL_VOLUME_CONTROL, 0x40 },	/* AK4432_04_AOUTL_VOLUME_CONTROL -20dB */
 	{ AK4432_05_AOUTR_VOLUME_CONTROL, 0x40 },	/* AK4432_05_AOUTR_VOLUME_CONTROL -20dB */
 };
 
-/* DAC Digital Volume control:
- * from -115.5 to 12 dB in 0.5 dB steps (mute instead of -115.5 dB) */
-static DECLARE_TLV_DB_SCALE(latt_tlv, -11550, 50, 0);
-static DECLARE_TLV_DB_SCALE(ratt_tlv, -11550, 50, 0);
+/* DAC Digital Volume control (the control is inverted, value = 255 - ATT):
+ * ALSA 255 (00h) = +12 dB, 231 (18h) = 0 dB, 1 (FEh) = -115 dB,
+ * 0 (FFh) = mute. 0.5 dB steps. */
+static DECLARE_TLV_DB_SCALE(latt_tlv, -11550, 50, 1);
+static DECLARE_TLV_DB_SCALE(ratt_tlv, -11550, 50, 1);
 
 
 //DASD, DASL bits Digital Filter Setting
@@ -102,8 +107,10 @@ static const char *ak4432_digfil_select_texts[] = {"Sharp Roll-Off Filter", "Slo
 // 1 1 : TDM256 Mode
 static const char *ak4432_tdm_select_texts[] = { "Normal Mode", "TDM128 Mode", "TDM256 Mode", "TDM256 Mode"};
 
-//ATS bit Attenuation Speed
-static const char* ak4432_ats_select_texts[] = {"4/fs", "16/fs", };
+//ATS bit: time per 0.125 dB step of the volume soft transition
+// 0 : 1/fs (full scale 1020/fs, 21.3 ms at 48 kHz)
+// 1 : 4/fs (full scale 4080/fs, 85 ms at 48 kHz)
+static const char* ak4432_ats_select_texts[] = {"1/fs", "4/fs", };
 //SDS12-0 bits: Output Data Select
 //Refer to Data Sheet
 static const char *ak4432_sds_select_texts[] = {
@@ -593,12 +600,8 @@ static int ak4432_set_dai_mute(struct snd_soc_dai *dai, int mute, int direction)
 
 	akdbgprt("\t[AK4432] %s direction value: %d\n", __FUNCTION__, direction);
 
-	switch( ats ) {
-		case 0:
-			att_step = 1021;	break;
-		case 1:
-			att_step = 4084;	break;
-	}
+	/* Full-scale soft transition length in 1/fs units (datasheet Table 11) */
+	att_step = ats ? 4080 : 1020;
 
 	ndt = att_step / (nfs / 1000);
 
@@ -677,12 +680,14 @@ static int ak4432_init_reg(struct snd_soc_component *codec)
 	// ACKS bit set for auto clock detection
 	snd_soc_component_update_bits(codec, AK4432_01_CONTROL1, AK4432_ACKS_MASK, AK4432_ACKS_MASK);
 	snd_soc_component_update_bits(codec, AK4432_01_CONTROL1, AK4432_DFS_MASK, AK4432_DFS_48KHZ);
-	snd_soc_component_update_bits(codec, AK4432_02_DATA_INTERFACE, AK4432_DIF_MASK, AK4432_DIF_LSB_24B);
+	snd_soc_component_update_bits(codec, AK4432_02_DATA_INTERFACE, AK4432_DIF_MASK, AK4432_DIF_MSB_32B);
 	snd_soc_component_update_bits(codec, AK4432_02_DATA_INTERFACE, AK4432_TDM_MASK, 0x10);
 	snd_soc_component_update_bits(codec, AK4432_02_DATA_INTERFACE, AK4432_SDS_MASK, 0);
+	/* SYNCE may only change while no data is input, i.e. with PMDA = 0 */
 	snd_soc_component_update_bits(codec, AK4432_03_CONTROL2, AK4432_SYNCE_MASK, 0);
 	snd_soc_component_update_bits(codec, AK4432_03_CONTROL2, AK4432_SMUTE_MASK, 0);
-	snd_soc_component_update_bits(codec, AK4432_03_CONTROL2, AK4432_ATS_MASK, 0);
+	/* Slowest volume soft transition: 0.125 dB per 4/fs (4 ms per 6 dB at 48 kHz) */
+	snd_soc_component_update_bits(codec, AK4432_03_CONTROL2, AK4432_ATS_MASK, AK4432_ATS_MASK);
 	snd_soc_component_update_bits(codec, AK4432_04_AOUTL_VOLUME_CONTROL, 0xFF, 0x40);
 	snd_soc_component_update_bits(codec, AK4432_05_AOUTR_VOLUME_CONTROL, 0xFF, 0x40);
 	snd_soc_component_update_bits(codec, AK4432_00_POWER_MANAGEMENT, AK4432_PMDA_MASK, AK4432_PMDA_MASK);
