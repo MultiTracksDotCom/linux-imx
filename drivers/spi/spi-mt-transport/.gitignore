@@ -1,0 +1,5 @@
+# core/ is the portable SPI transport protocol core -- single source of
+# truth lives in the firmware repo (firmware-common/spi-transport/), staged
+# here at Yocto build time (see imx8mmini-bb-evk's meta-mt-transport-evk
+# linux-imx_%.bbappend), never committed into this repo.
+core/
